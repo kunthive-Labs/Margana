@@ -1,0 +1,14 @@
+/marga
+/bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+.env
+*.db
+*.test
+*.out
+.envrc
+*.rvf
+*.rvf.lock
