@@ -1,0 +1,380 @@
+// Package matrix implements network.Network by connecting directly to a Matrix
+// homeserver via the client-server API (mautrix-go). Unlike the Discord
+// adapter it needs no relay. End-to-end encryption is out of scope for v1:
+// encrypted rooms are surfaced but their contents are not decrypted.
+package matrix
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
+
+	"github.com/kunthive-Labs/Margana/internal/config"
+	"github.com/kunthive-Labs/Margana/internal/model"
+	"github.com/kunthive-Labs/Margana/internal/network"
+	"github.com/kunthive-Labs/Margana/internal/network/credstore"
+)
+
+// ID is the stable handle for the Matrix network.
+const ID network.NetworkID = "matrix"
+
+var _ network.Network = (*Adapter)(nil)
+
+// Adapter is a direct Matrix client behind the network.Network interface.
+type Adapter struct {
+	homeserver string
+	userID     string
+	storePath  string
+
+	client   *mautrix.Client
+	identity network.Identity
+
+	events chan network.Event
+	cancel context.CancelFunc
+}
+
+// New builds a Matrix adapter from its [[networks]] entry. Credentials are read
+// from the keyring (service "marga-matrix") at Connect time.
+func New(n config.NetworkConfig, storePath string) *Adapter {
+	return &Adapter{
+		homeserver: n.Homeserver,
+		userID:     n.UserID,
+		storePath:  storePath,
+		identity: network.Identity{
+			Network:  ID,
+			UserID:   n.UserID,
+			Username: localpart(n.UserID),
+		},
+		events: make(chan network.Event, 256),
+	}
+}
+
+func (a *Adapter) ID() network.NetworkID { return ID }
+
+func (a *Adapter) Capabilities() network.Capabilities {
+	return network.Capabilities{
+		Edit:       true,
+		FileUpload: true,
+		Typing:     true,
+		Presence:   true,
+		History:    true,
+		ServerList: false, // v1: flat room list, no space grouping
+		Reactions:  false,
+	}
+}
+
+// Connect authenticates (using a stored token, or a password from
+// MARGA_MATRIX_PASSWORD on first run) and starts the /sync loop.
+func (a *Adapter) Connect(ctx context.Context) error {
+	token, _ := credstore.Get("matrix", "access_token")
+	deviceID, _ := credstore.Get("matrix", "device_id")
+
+	if a.homeserver == "" || a.userID == "" {
+		return fmt.Errorf("matrix: homeserver and user_id must be configured")
+	}
+
+	client, err := mautrix.NewClient(a.homeserver, id.UserID(a.userID), token)
+	if err != nil {
+		return fmt.Errorf("matrix: new client: %w", err)
+	}
+	client.DeviceID = id.DeviceID(deviceID)
+	client.Store = newFileSyncStore(a.storePath)
+
+	if token == "" {
+		if err := a.passwordLogin(ctx, client); err != nil {
+			return err
+		}
+	}
+
+	a.client = client
+	a.registerHandlers()
+
+	syncCtx, cancel := context.WithCancel(ctx)
+	a.cancel = cancel
+	go a.syncLoop(syncCtx)
+	return nil
+}
+
+// passwordLogin performs an m.login.password flow using MARGA_MATRIX_PASSWORD
+// and persists the returned token/device to the keyring. v1 onboarding hook;
+// a full setup wizard arrives in a later phase.
+func (a *Adapter) passwordLogin(ctx context.Context, client *mautrix.Client) error {
+	password := os.Getenv("MARGA_MATRIX_PASSWORD")
+	if password == "" {
+		return fmt.Errorf("matrix: no stored token and MARGA_MATRIX_PASSWORD is unset")
+	}
+	resp, err := client.Login(ctx, &mautrix.ReqLogin{
+		Type:                     mautrix.AuthTypePassword,
+		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: localpart(a.userID)},
+		Password:                 password,
+		InitialDeviceDisplayName: "Margana",
+		StoreCredentials:         true,
+	})
+	if err != nil {
+		return fmt.Errorf("matrix: login: %w", err)
+	}
+	_ = credstore.Set("matrix", "access_token", resp.AccessToken)
+	_ = credstore.Set("matrix", "device_id", resp.DeviceID.String())
+	return nil
+}
+
+func (a *Adapter) syncLoop(ctx context.Context) {
+	defer close(a.events)
+	a.emit(ctx, network.Event{Network: ID, Kind: network.EventStatus, State: network.StateConnected})
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		err := a.client.SyncWithContext(ctx)
+		if err == nil || ctx.Err() != nil {
+			return
+		}
+		// Transient sync failure: report reconnecting and retry after a pause.
+		a.emit(ctx, network.Event{Network: ID, Kind: network.EventStatus, State: network.StateReconnecting, Err: err})
+		select {
+		case <-time.After(5 * time.Second):
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (a *Adapter) registerHandlers() {
+	syncer, ok := a.client.Syncer.(*mautrix.DefaultSyncer)
+	if !ok {
+		return
+	}
+	syncer.OnEventType(event.EventMessage, a.onRoomMessage)
+	syncer.OnEventType(event.EphemeralEventTyping, a.onTyping)
+}
+
+func (a *Adapter) onRoomMessage(ctx context.Context, evt *event.Event) {
+	// Ignore our own echo only if it predates startup is not tracked here; the
+	// TUI dedups by message id and sender, so always forward.
+	content := evt.Content.AsMessage()
+	if content == nil {
+		return
+	}
+
+	msg := model.Message{
+		Network:   string(ID),
+		ID:        evt.ID.String(),
+		UserID:    evt.Sender.String(),
+		Username:  displayName(evt.Sender),
+		Content:   content.Body,
+		Channel:   evt.RoomID.String(),
+		Timestamp: time.UnixMilli(evt.Timestamp),
+		Editable:  evt.Sender == a.client.UserID,
+	}
+
+	if rel := content.RelatesTo; rel != nil {
+		if replaceID := rel.GetReplaceID(); replaceID != "" {
+			// An edit: target the replaced event and use the new body.
+			msg.EventType = "message_update"
+			msg.ID = replaceID.String()
+			if content.NewContent != nil {
+				msg.Content = content.NewContent.Body
+			}
+		} else if replyID := rel.GetReplyTo(); replyID != "" {
+			msg.ReplyToID = replyID.String()
+		}
+	} else {
+		msg.EventType = "message_create"
+	}
+	if msg.EventType == "" {
+		msg.EventType = "message_create"
+	}
+
+	if att := mediaAttachment(content); att != nil {
+		msg.Attachments = []model.Attachment{*att}
+	}
+
+	a.emit(ctx, network.Event{Network: ID, Kind: network.EventMessage, Message: &msg})
+}
+
+func (a *Adapter) onTyping(ctx context.Context, evt *event.Event) {
+	content, ok := evt.Content.Parsed.(*event.TypingEventContent)
+	if !ok {
+		return
+	}
+	for _, uid := range content.UserIDs {
+		if uid == a.client.UserID {
+			continue
+		}
+		te := model.TypingEvent{Type: "typing", Username: displayName(uid), Channel: evt.RoomID.String()}
+		a.emit(ctx, network.Event{Network: ID, Kind: network.EventTyping, Typing: &te})
+	}
+}
+
+func (a *Adapter) Disconnect() error {
+	if a.cancel != nil {
+		a.cancel()
+	}
+	if a.client != nil {
+		a.client.StopSync()
+	}
+	return nil
+}
+
+func (a *Adapter) CurrentUser() network.Identity { return a.identity }
+
+func (a *Adapter) ListServers(context.Context) ([]network.Server, error) {
+	// v1 presents a flat room list; spaces-as-servers arrives in a later phase.
+	return nil, nil
+}
+
+func (a *Adapter) ListChannels(ctx context.Context, _ string) ([]network.ChannelRef, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("matrix: not connected")
+	}
+	resp, err := a.client.JoinedRooms(ctx)
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]network.ChannelRef, 0, len(resp.JoinedRooms))
+	for _, roomID := range resp.JoinedRooms {
+		refs = append(refs, network.ChannelRef{
+			Network: ID,
+			ID:      roomID.String(),
+			Name:    a.roomName(ctx, roomID),
+		})
+	}
+	return refs, nil
+}
+
+func (a *Adapter) roomName(ctx context.Context, roomID id.RoomID) string {
+	var content event.RoomNameEventContent
+	if err := a.client.StateEvent(ctx, roomID, event.StateRoomName, "", &content); err == nil && content.Name != "" {
+		return content.Name
+	}
+	return roomID.String()
+}
+
+func (a *Adapter) Subscribe(network.ChannelRef) error   { return nil } // sync delivers all joined rooms
+func (a *Adapter) Unsubscribe(network.ChannelRef) error { return nil }
+
+func (a *Adapter) FetchHistory(ctx context.Context, ref network.ChannelRef, limit int, before *time.Time) ([]model.Message, error) {
+	// v1 relies on the live /sync stream for history; paginated backfill via
+	// /messages is a later enhancement.
+	return nil, nil
+}
+
+func (a *Adapter) Send(ctx context.Context, ref network.ChannelRef, content, replyToID string) (string, error) {
+	if a.client == nil {
+		return "", fmt.Errorf("matrix: not connected")
+	}
+	msgContent := event.MessageEventContent{MsgType: event.MsgText, Body: content}
+	if replyToID != "" {
+		msgContent.RelatesTo = &event.RelatesTo{InReplyTo: &event.InReplyTo{EventID: id.EventID(replyToID)}}
+	}
+	resp, err := a.client.SendMessageEvent(ctx, id.RoomID(ref.ID), event.EventMessage, &msgContent)
+	if err != nil {
+		return "", err
+	}
+	return resp.EventID.String(), nil
+}
+
+func (a *Adapter) SendFile(ctx context.Context, ref network.ChannelRef, path, content string) (string, error) {
+	if a.client == nil {
+		return "", fmt.Errorf("matrix: not connected")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	name := filepathBase(path)
+	upload, err := a.client.UploadMedia(ctx, mautrix.ReqUploadMedia{
+		ContentBytes: data,
+		FileName:     name,
+		ContentType:  detectContentType(name),
+	})
+	if err != nil {
+		return "", err
+	}
+	body := name
+	if content != "" {
+		body = content
+	}
+	msgContent := event.MessageEventContent{
+		MsgType:  msgTypeForFile(name),
+		Body:     body,
+		FileName: name,
+		URL:      upload.ContentURI.CUString(),
+	}
+	resp, err := a.client.SendMessageEvent(ctx, id.RoomID(ref.ID), event.EventMessage, &msgContent)
+	if err != nil {
+		return "", err
+	}
+	return resp.EventID.String(), nil
+}
+
+func (a *Adapter) Edit(ctx context.Context, ref network.ChannelRef, messageID, content string) error {
+	if a.client == nil {
+		return fmt.Errorf("matrix: not connected")
+	}
+	newContent := event.MessageEventContent{MsgType: event.MsgText, Body: content}
+	msgContent := event.MessageEventContent{
+		MsgType:    event.MsgText,
+		Body:       "* " + content,
+		NewContent: &newContent,
+		RelatesTo:  &event.RelatesTo{Type: event.RelReplace, EventID: id.EventID(messageID)},
+	}
+	_, err := a.client.SendMessageEvent(ctx, id.RoomID(ref.ID), event.EventMessage, &msgContent)
+	return err
+}
+
+func (a *Adapter) SetStatus(string) error { return nil } // presence broadcast is a later enhancement
+
+func (a *Adapter) Events() <-chan network.Event { return a.events }
+
+func (a *Adapter) emit(ctx context.Context, ev network.Event) {
+	select {
+	case a.events <- ev:
+	case <-ctx.Done():
+	}
+}
+
+// --- helpers ---
+
+func localpart(mxid string) string {
+	s := strings.TrimPrefix(mxid, "@")
+	if i := strings.IndexByte(s, ':'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+func displayName(uid id.UserID) string {
+	return localpart(uid.String())
+}
+
+func mediaAttachment(content *event.MessageEventContent) *model.Attachment {
+	switch content.MsgType {
+	case event.MsgImage, event.MsgFile, event.MsgVideo, event.MsgAudio:
+		name := content.FileName
+		if name == "" {
+			name = content.Body
+		}
+		att := &model.Attachment{
+			URL:      string(content.URL),
+			Filename: name,
+		}
+		if content.Info != nil {
+			att.ContentType = content.Info.MimeType
+			att.Width = content.Info.Width
+			att.Height = content.Info.Height
+			att.Size = content.Info.Size
+		}
+		return att
+	default:
+		return nil
+	}
+}
