@@ -1,0 +1,144 @@
+# Marga Terminal Configuration
+#
+# Place this file at:
+#   Linux/macOS: ~/.config/marga/config.toml
+#   Windows:     %APPDATA%\marga\config.toml
+#
+# Or pass a custom path: marga --config /path/to/config.toml
+#
+# Any field can be overridden with environment variables:
+#   MARGA_USERNAME              → general.username
+#   MARGA_CHANNEL               → general.channel
+#   MARGA_WEBSOCKET_URL          → server.websocket_url
+#   MARGA_WEBHOOK_URL            → server.webhook_url
+#   MARGA_RELAY_URL              → server.relay_url
+#   MARGA_AUTH_ENABLED           → auth.enabled (true/false)
+#   MARGA_AUTH_PROVIDER          → auth.provider
+#   MARGA_DISCORD_CLIENT_ID      → auth.discord.client_id
+#   MARGA_DISCORD_CLIENT_SECRET  → auth.discord.client_secret (optional; private deployments)
+#   MARGA_DISCORD_REDIRECT_URL   → auth.discord.redirect_url
+#   MARGA_THEME                  → ui.theme
+#   MARGA_HISTORY_LIMIT          → ui.history_limit
+#   MARGA_GITHUB_TOKEN           → github.token
+#   MARGA_GITHUB_REPO            → github.repo
+
+# ── General ──────────────────────────────────────────────────────────────
+[general]
+# Display name shown next to your messages.
+# Required unless using Discord auth (which populates this automatically).
+username = ""
+
+# Default channel to join on startup.
+channel = "general"
+
+# Discord identity fields — populated automatically after Discord OAuth login.
+# Leave these empty unless you know what you're doing.
+discord_id = ""
+discord_username = ""
+discord_global_name = ""
+discord_avatar_url = ""
+
+# ── Server ───────────────────────────────────────────────────────────────
+[server]
+# WebSocket relay server URL.
+# This is where Marga subscribes to receive real-time messages.
+# Required. Example: wss://relay.example.com/ws
+websocket_url = "wss://marga.kunthive.com:8443/ws"
+
+# Discord webhook URL for sending messages.
+# Create one in your Discord server: Server Settings → Integrations → Webhooks.
+# Required. Example: https://discord.com/api/webhooks/123456789/abcdef
+webhook_url = ""
+
+# Relay REST API base URL for fetching message history.
+# Optional — history fetching is disabled if this is empty.
+relay_url = "https://marga.kunthive.com:8080"
+
+# Web setup wizard URL (used when choosing "web" setup during onboarding).
+# Defaults to https://marga.kunthive.com. Override with MARGA_WEB_SETUP_URL env var.
+# Set to http://localhost:3000 for local development.
+web_setup_url = "https://marga.kunthive.com"
+
+# ── Auth ─────────────────────────────────────────────────────────────────
+[auth]
+# Enable authentication. When true, Marga will use Discord OAuth2 on first run
+# to authenticate your identity and populate general.username automatically.
+enabled = true
+
+# Authentication provider. Currently only "discord" is supported.
+provider = "discord"
+
+# ── Discord OAuth2 ────────────────────────────────────────────────────────
+[auth.discord]
+# Discord application client ID from https://discord.com/developers/applications
+# Pre-configured for Marga — no setup needed.
+client_id = "1503351063468572754"
+
+# Discord application client secret (optional for confidential/private deployments).
+# Leave empty for public/native CLI clients using PKCE.
+client_secret = ""
+
+# OAuth2 redirect URL. Must be a loopback address and must match
+# what you configured in the Discord Developer Portal under OAuth2 → Redirects.
+# The default port is 53682.
+redirect_url = "http://127.0.0.1:53682/callback"
+
+# Token fields — populated automatically after successful OAuth login.
+# You should not need to edit these manually.
+token_type = ""
+scope = ""
+expiry = ""
+
+# ── UI ───────────────────────────────────────────────────────────────────
+[ui]
+# Color theme. Available themes: default, dracula, solarized
+theme = "default"
+
+# Number of messages to fetch on startup from the relay server.
+history_limit = 100
+
+# Inline image rendering protocol. Options: auto (default), iterm2, kitty, none.
+# "auto" probes the environment. Set explicitly if running inside tmux where
+# detection fails — e.g. image_protocol = "iterm2" for iTerm2+tmux.
+# Override with MARGA_IMAGE_PROTOCOL env var.
+image_protocol = "auto"
+
+# ── GitHub Activity ──────────────────────────────────────────────────────
+# Optional. When both `repo` and (for private repos) `token` are set, Marga
+# shows a sidebar panel with the latest events from the GitHub repo, refreshed
+# every 60 seconds. Leave either field empty to disable the panel.
+[github]
+# Personal access token used to authenticate against the GitHub API.
+# - Public repos: optional, but recommended (raises rate limit from 60/hr to
+#   5000/hr).
+# - Private repos: required, with `repo` scope (classic PAT) or `Contents:
+#   Read` (fine-grained PAT).
+# Create one at https://github.com/settings/tokens
+token = ""
+
+# Repository to track, in "owner/repo" format. Example: "kunthive-Labs/Margana".
+repo = ""
+
+# ── Notifications ──────────────────────────────────────────────────────────
+[notifications]
+# Ring the terminal bell when you are @-mentioned (in a non-muted channel).
+bell_on_mention = false
+
+# Channels for which mention notifications (and the bell) are suppressed.
+# Case-insensitive. Example: muted_channels = ["bots", "ci-spam"]
+muted_channels = []
+
+# ── Additional networks (experimental) ─────────────────────────────────────
+# Marga speaks to multiple chat networks behind one TUI. Discord (above) is
+# implicit. Add other networks as [[networks]] entries. Secrets are stored in
+# the OS keyring (service "marga-<id>"), never in this file.
+#
+# Matrix connects DIRECTLY to your homeserver (no relay). On first run, set
+# MARGA_MATRIX_PASSWORD to log in; the token is then cached in the keyring.
+#
+# [[networks]]
+# id         = "matrix"
+# type       = "matrix"
+# enabled    = true
+# homeserver = "https://matrix.org"
+# user_id    = "@you:matrix.org"   # non-secret; the access token lives in the keyring
