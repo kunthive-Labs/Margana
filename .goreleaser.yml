@@ -1,0 +1,125 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: marga
+    main: ./cmd/marga
+    binary: marga
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+
+archives:
+  - id: marga
+    builds:
+      - marga
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - config.example.toml
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+release:
+  github:
+    owner: kunthive-Labs
+    name: Margana
+
+brews:
+  - name: marga
+    repository:
+      owner: kunthive-Labs
+      name: homebrew-tap
+    directory: Formula
+    homepage: "https://github.com/kunthive-Labs/Margana"
+    description: "Terminal-native realtime chat client for Discord"
+    license: MIT
+    test: |
+      system "#{bin}/marga", "--help"
+    install: |
+      bin.install "marga"
+
+nfpms:
+  - package_name: marga
+    file_name_template: >-
+      {{ .PackageName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    homepage: https://github.com/kunthive-Labs/Margana
+    description: >
+      Terminal-native realtime chat client for Discord.
+      Connects to a relay server over WebSockets with a
+      keyboard-driven TUI, offline SQLite storage, and
+      Discord webhook integration.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+      - archlinux
+    maintainer: "kunthive-Labs <hello@kunthive-Labs.dev>"
+    section: net
+    contents:
+      - src: config.example.toml
+        dst: /usr/share/doc/marga/config.example.toml
+
+scoops:
+  - name: marga
+    repository:
+      owner: kunthive-Labs
+      name: scoop-bucket
+    homepage: https://github.com/kunthive-Labs/Margana
+    description: "Terminal-native realtime chat client for Discord"
+    license: MIT
+
+nix:
+  - name: marga
+    repository:
+      owner: kunthive-Labs
+      name: nixpkgs
+    homepage: https://github.com/kunthive-Labs/Margana
+    description: "Terminal-native realtime chat client for Discord"
+    license: mit
+
+aurs:
+  - name: marga-bin
+    homepage: "https://github.com/kunthive-Labs/Margana"
+    description: "Terminal-native realtime chat client for Discord"
+    maintainers:
+      - "kunthive-Labs <hello@kunthive-Labs.dev>"
+    license: "Apache-2.0"
+    private_key: '{{ .Env.AUR_KEY }}'
+    git_url: 'ssh://aur@aur.archlinux.org/marga-bin.git'
