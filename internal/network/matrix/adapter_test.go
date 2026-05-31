@@ -123,3 +123,30 @@ func TestLocalpart(t *testing.T) {
 		t.Fatalf("localpart no-domain: got %q", got)
 	}
 }
+
+func TestListServersReturnsHomeserver(t *testing.T) {
+	a := &Adapter{homeserver: "https://matrix.example.org"}
+	servers, err := a.ListServers(context.Background())
+	if err != nil {
+		t.Fatalf("ListServers: %v", err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("expected 1 server, got %d", len(servers))
+	}
+	if servers[0].ID != "https://matrix.example.org" {
+		t.Errorf("server ID = %q", servers[0].ID)
+	}
+	if servers[0].Name != "matrix.example.org" {
+		t.Errorf("server Name = %q, want stripped host", servers[0].Name)
+	}
+}
+
+func TestFetchHistoryAndSetStatusRequireClient(t *testing.T) {
+	a := &Adapter{}
+	if _, err := a.FetchHistory(context.Background(), network.ChannelRef{ID: "!r:hs"}, 10, nil); err == nil {
+		t.Fatal("FetchHistory: expected error when not connected")
+	}
+	if err := a.SetStatus("online"); err == nil {
+		t.Fatal("SetStatus: expected error when not connected")
+	}
+}

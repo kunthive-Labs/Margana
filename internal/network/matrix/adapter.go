@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"maunium.net/go/mautrix"
@@ -37,6 +38,9 @@ type Adapter struct {
 
 	events chan network.Event
 	cancel context.CancelFunc
+
+	histMu     sync.Mutex
+	histTokens map[string]string // roomID -> next backward pagination token
 }
 
 // New builds a Matrix adapter from its [[networks]] entry. Credentials are read
@@ -51,7 +55,8 @@ func New(n config.NetworkConfig, storePath string) *Adapter {
 			UserID:   n.UserID,
 			Username: localpart(n.UserID),
 		},
-		events: make(chan network.Event, 256),
+		events:     make(chan network.Event, 256),
+		histTokens: make(map[string]string),
 	}
 }
 
@@ -64,7 +69,7 @@ func (a *Adapter) Capabilities() network.Capabilities {
 		Typing:     true,
 		Presence:   true,
 		History:    true,
-		ServerList: false, // v1: flat room list, no space grouping
+		ServerList: true, // the homeserver is surfaced as a single server
 		Reactions:  false,
 	}
 }
@@ -157,14 +162,23 @@ func (a *Adapter) registerHandlers() {
 }
 
 func (a *Adapter) onRoomMessage(ctx context.Context, evt *event.Event) {
-	// Ignore our own echo only if it predates startup is not tracked here; the
-	// TUI dedups by message id and sender, so always forward.
+	// The TUI dedups by message id and sender, so always forward (including
+	// our own echo).
+	if msg := a.eventToMessage(evt); msg != nil {
+		a.emit(ctx, network.Event{Network: ID, Kind: network.EventMessage, Message: msg})
+	}
+}
+
+// eventToMessage maps an m.room.message event to the neutral model.Message.
+// Shared by the live /sync handler and the /messages history backfill. Returns
+// nil for events that aren't text/media messages.
+func (a *Adapter) eventToMessage(evt *event.Event) *model.Message {
 	content := evt.Content.AsMessage()
 	if content == nil {
-		return
+		return nil
 	}
 
-	msg := model.Message{
+	msg := &model.Message{
 		Network:   string(ID),
 		ID:        evt.ID.String(),
 		UserID:    evt.Sender.String(),
@@ -186,8 +200,6 @@ func (a *Adapter) onRoomMessage(ctx context.Context, evt *event.Event) {
 		} else if replyID := rel.GetReplyTo(); replyID != "" {
 			msg.ReplyToID = replyID.String()
 		}
-	} else {
-		msg.EventType = "message_create"
 	}
 	if msg.EventType == "" {
 		msg.EventType = "message_create"
@@ -197,7 +209,7 @@ func (a *Adapter) onRoomMessage(ctx context.Context, evt *event.Event) {
 		msg.Attachments = []model.Attachment{*att}
 	}
 
-	a.emit(ctx, network.Event{Network: ID, Kind: network.EventMessage, Message: &msg})
+	return msg
 }
 
 func (a *Adapter) onTyping(ctx context.Context, evt *event.Event) {
@@ -227,8 +239,13 @@ func (a *Adapter) Disconnect() error {
 func (a *Adapter) CurrentUser() network.Identity { return a.identity }
 
 func (a *Adapter) ListServers(context.Context) ([]network.Server, error) {
-	// v1 presents a flat room list; spaces-as-servers arrives in a later phase.
-	return nil, nil
+	// v1 presents the homeserver as a single server with a flat room list under
+	// it; spaces-as-servers grouping arrives in a later phase.
+	name := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(a.homeserver, "https://"), "http://"), "/")
+	if name == "" {
+		name = "matrix"
+	}
+	return []network.Server{{ID: a.homeserver, Name: name}}, nil
 }
 
 func (a *Adapter) ListChannels(ctx context.Context, _ string) ([]network.ChannelRef, error) {
@@ -261,10 +278,50 @@ func (a *Adapter) roomName(ctx context.Context, roomID id.RoomID) string {
 func (a *Adapter) Subscribe(network.ChannelRef) error   { return nil } // sync delivers all joined rooms
 func (a *Adapter) Unsubscribe(network.ChannelRef) error { return nil }
 
+// FetchHistory backfills a room's history via the /messages endpoint, paging
+// backward. The interface pages by `before` timestamp, but Matrix pages by
+// opaque token, so we keep a per-room cursor: before==nil starts from the most
+// recent message; a non-nil before continues from where the last call ended.
 func (a *Adapter) FetchHistory(ctx context.Context, ref network.ChannelRef, limit int, before *time.Time) ([]model.Message, error) {
-	// v1 relies on the live /sync stream for history; paginated backfill via
-	// /messages is a later enhancement.
-	return nil, nil
+	if a.client == nil {
+		return nil, fmt.Errorf("matrix: not connected")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+
+	a.histMu.Lock()
+	from := ""
+	if before != nil {
+		from = a.histTokens[ref.ID] // continue paging older
+	}
+	a.histMu.Unlock()
+
+	resp, err := a.client.Messages(ctx, id.RoomID(ref.ID), from, "", mautrix.DirectionBackward, nil, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	a.histMu.Lock()
+	a.histTokens[ref.ID] = resp.End // next call resumes from here
+	a.histMu.Unlock()
+
+	// Backward pagination yields newest-first, matching the interface contract.
+	msgs := make([]model.Message, 0, len(resp.Chunk))
+	for _, evt := range resp.Chunk {
+		if evt.Type != event.EventMessage {
+			continue
+		}
+		if err := evt.Content.ParseRaw(evt.Type); err != nil {
+			continue
+		}
+		// Skip edits during backfill; the original is shown and live /sync
+		// applies edits as they arrive.
+		if m := a.eventToMessage(evt); m != nil && m.EventType == "message_create" {
+			msgs = append(msgs, *m)
+		}
+	}
+	return msgs, nil
 }
 
 func (a *Adapter) Send(ctx context.Context, ref network.ChannelRef, content, replyToID string) (string, error) {
@@ -331,7 +388,20 @@ func (a *Adapter) Edit(ctx context.Context, ref network.ChannelRef, messageID, c
 	return err
 }
 
-func (a *Adapter) SetStatus(string) error { return nil } // presence broadcast is a later enhancement
+// SetStatus broadcasts presence to the homeserver.
+func (a *Adapter) SetStatus(status string) error {
+	if a.client == nil {
+		return fmt.Errorf("matrix: not connected")
+	}
+	presence := event.PresenceOnline
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "away", "idle", "unavailable":
+		presence = event.PresenceUnavailable
+	case "offline", "invisible":
+		presence = event.PresenceOffline
+	}
+	return a.client.SetPresence(context.Background(), mautrix.ReqPresence{Presence: presence})
+}
 
 func (a *Adapter) Events() <-chan network.Event { return a.events }
 
