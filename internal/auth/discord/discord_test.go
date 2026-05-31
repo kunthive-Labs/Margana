@@ -304,6 +304,7 @@ web_setup_url = ""
 	// Prepare a config struct
 	cfg := config.Default()
 	cfg.Auth.Discord.AccessToken = "test-token"
+	cfg.Auth.Discord.ClientID = "test-client-id" // required now that there is no bundled default
 
 	// Run saveConfigMerged
 	if err := saveConfigMerged(cfg, configPath); err != nil {
@@ -325,9 +326,10 @@ web_setup_url = ""
 		t.Errorf("expected RelayURL to be 'http://custom-relay', got %q", loaded.Server.RelayURL)
 	}
 
-	// Verify that the default values for fields not in the original file are preserved
-	if loaded.Server.WebSetupURL != "https://marga.kunthive.com" {
-		t.Errorf("expected WebSetupURL to retain default 'https://marga.kunthive.com', got %q", loaded.Server.WebSetupURL)
+	// web_setup_url has no bundled default anymore; the explicit empty value in
+	// the file is preserved (not silently replaced with a hosted placeholder).
+	if loaded.Server.WebSetupURL != "" {
+		t.Errorf("expected WebSetupURL to stay empty (no default), got %q", loaded.Server.WebSetupURL)
 	}
 	if loaded.Auth.Discord.AccessToken != "test-token" {
 		t.Errorf("expected AccessToken to be 'test-token', got %q", loaded.Auth.Discord.AccessToken)

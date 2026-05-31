@@ -44,6 +44,7 @@ func TestValidateMissingFields(t *testing.T) {
 	}
 
 	cfg.Server.WebhookURL = "https://discord.com/api/webhooks/test"
+	cfg.Auth.Discord.ClientID = "test-client-id"
 	err = cfg.Validate()
 	if err != nil {
 		t.Fatalf("expected valid config, got: %v", err)
@@ -92,6 +93,9 @@ channel = "dev"
 [server]
 websocket_url = "wss://relay.test.com/ws"
 webhook_url = "https://discord.com/api/webhooks/123/token"
+
+[auth.discord]
+client_id = "test-client-id"
 
 [ui]
 theme = "dracula"
@@ -207,6 +211,9 @@ username = "testuser"
 websocket_url = "wss://relay.test.com/ws"
 webhook_url = "https://discord.com/api/webhooks/123/token"
 
+[auth.discord]
+client_id = "test-client-id"
+
 [notifications]
 bell_on_mention = true
 muted_channels = ["bots", "ci-spam"]
@@ -274,6 +281,9 @@ channel = "cli-channel"
 websocket_url = "wss://cli.example.com/ws"
 webhook_url = "https://discord.com/api/webhooks/cli/token"
 
+[auth.discord]
+client_id = "test-client-id"
+
 [ui]
 theme = "dracula"
 history_limit = 75
@@ -317,6 +327,9 @@ channel = "short-channel"
 [server]
 websocket_url = "wss://short.example.com/ws"
 webhook_url = "https://discord.com/api/webhooks/short/token"
+
+[auth.discord]
+client_id = "test-client-id"
 `
 	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
 		t.Fatalf("writing test config: %v", err)
@@ -348,6 +361,9 @@ channel = "file-channel"
 [server]
 websocket_url = "wss://file.example.com/ws"
 webhook_url = "https://discord.com/api/webhooks/file/token"
+
+[auth.discord]
+client_id = "test-client-id"
 `
 	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
 		t.Fatalf("writing test config: %v", err)
@@ -405,12 +421,11 @@ func TestLoadNonexistentConfigFile(t *testing.T) {
 
 	clearConfigEnvVars()
 
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("expected defaults to be valid when config file doesn't exist, got: %v", err)
-	}
-	if cfg == nil {
-		t.Fatal("expected non-nil config")
+	// Marga ships no hosted relay. With no config file and no env, Discord is
+	// enabled by default but has no endpoints or client_id, so Load must fail
+	// with an actionable error rather than silently using a dead default.
+	if _, err := Load(); err == nil {
+		t.Fatal("expected an error when no config exists and Discord is unconfigured")
 	}
 }
 

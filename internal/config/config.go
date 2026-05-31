@@ -129,17 +129,22 @@ func Default() *Config {
 			Channel:  "general",
 		},
 		Server: ServerConfig{
-			WebsocketURL: "wss://marga.kunthive.com:8443/ws",
+			// Endpoints are intentionally empty: Marga ships no hosted relay.
+			// Point these at your own relay (config or MARGA_* env) before using
+			// Discord. See docs/SELF_HOSTING.md.
+			WebsocketURL: "",
 			WebhookURL:   "",
-			RelayURL:     "https://marga.kunthive.com:8080",
-			BotClientID:  "1503351063468572754",
-			WebSetupURL:  "https://marga.kunthive.com",
+			RelayURL:     "",
+			BotClientID:  "",
+			WebSetupURL:  "",
 		},
 		Auth: AuthConfig{
 			Enabled:  true,
 			Provider: "discord",
 			Discord: DiscordAuthConfig{
-				ClientID:     "1503351063468572754",
+				// No default client_id: register your own Discord application
+				// and set auth.discord.client_id (or MARGA_DISCORD_CLIENT_ID).
+				ClientID:     "",
 				ClientSecret: "",
 				RedirectURL:  "http://127.0.0.1:53682/callback",
 			},
@@ -154,15 +159,6 @@ func Default() *Config {
 func (c *Config) ApplyDefaults() {
 	if c.General.Channel == "" {
 		c.General.Channel = "general"
-	}
-	if c.Server.RelayURL == "" {
-		c.Server.RelayURL = "https://marga.kunthive.com:8080"
-	}
-	if c.Server.BotClientID == "" {
-		c.Server.BotClientID = "1503351063468572754"
-	}
-	if c.Server.WebSetupURL == "" {
-		c.Server.WebSetupURL = "https://marga.kunthive.com"
 	}
 	if c.UI.Theme == "" {
 		c.UI.Theme = "default"
@@ -414,29 +410,29 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("MARGA_WEB_SETUP_URL"); v != "" {
 		cfg.Server.WebSetupURL = v
 	}
-	if cfg.Server.WebSetupURL == "" {
-		cfg.Server.WebSetupURL = "https://marga.kunthive.com"
-	}
 }
 
 func (c *Config) Validate() error {
 	if c.General.Username == "" && !c.UsesDiscordAuth() {
 		c.General.Username = "anon"
 	}
-	if c.Server.WebsocketURL == "" {
-		return fmt.Errorf("missing server.websocket_url — set it in config, or use MARGA_WEBSOCKET_URL env var")
-	}
-	if c.Server.WebhookURL == "" && c.Server.RelayURL == "" {
-		return fmt.Errorf("missing server.webhook_url and server.relay_url — set at least one in config")
-	}
-	// Discord auth is validated when selected. Other networks authenticate via
-	// their own [[networks]] entries and are validated by their adapters.
-	if c.Auth.Enabled && c.Auth.Provider == "discord" {
-		if c.Auth.Discord.ClientID == "" {
-			return fmt.Errorf("missing auth.discord.client_id — set it in config, or use MARGA_DISCORD_CLIENT_ID env var")
+	// Relay endpoints and a Discord application are only required when Discord
+	// is in use. Matrix (and other direct networks) connect without a relay, so
+	// a Matrix-only config needs none of these.
+	if c.usesDiscord() {
+		if c.Server.WebsocketURL == "" {
+			return fmt.Errorf("missing server.websocket_url — point it at your relay (config or MARGA_WEBSOCKET_URL); see docs/SELF_HOSTING.md")
 		}
-		if c.Auth.Discord.RedirectURL == "" {
-			return fmt.Errorf("missing auth.discord.redirect_url — set it in config, or use MARGA_DISCORD_REDIRECT_URL env var")
+		if c.Server.WebhookURL == "" && c.Server.RelayURL == "" {
+			return fmt.Errorf("missing server.webhook_url and server.relay_url — set at least one (config or MARGA_RELAY_URL)")
+		}
+		if c.UsesDiscordAuth() {
+			if c.Auth.Discord.ClientID == "" {
+				return fmt.Errorf("missing auth.discord.client_id — register a Discord application and set it (config or MARGA_DISCORD_CLIENT_ID); see docs/SELF_HOSTING.md")
+			}
+			if c.Auth.Discord.RedirectURL == "" {
+				return fmt.Errorf("missing auth.discord.redirect_url — set it (config or MARGA_DISCORD_REDIRECT_URL)")
+			}
 		}
 	}
 	for _, n := range c.Networks {
@@ -452,6 +448,21 @@ func (c *Config) Validate() error {
 
 func (c *Config) UsesDiscordAuth() bool {
 	return c.Auth.Enabled && c.Auth.Provider == "discord"
+}
+
+// usesDiscord reports whether Discord is active — either via the implicit
+// [auth.discord] flow or an explicit enabled [[networks]] entry. Used to decide
+// whether relay endpoints are required.
+func (c *Config) usesDiscord() bool {
+	if c.UsesDiscordAuth() {
+		return true
+	}
+	for _, n := range c.Networks {
+		if n.Enabled && (n.Type == "discord" || n.ID == "discord") {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Config) DiscordTokenExpiry() (time.Time, error) {

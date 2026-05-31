@@ -39,25 +39,28 @@ discord_global_name = ""
 discord_avatar_url = ""
 
 # ── Server ───────────────────────────────────────────────────────────────
+# Marga ships NO hosted relay. These endpoints must point at a relay you run
+# (or trust) before Discord will work. Matrix connects directly and needs none
+# of this — see [[networks]] at the bottom. See docs/SELF_HOSTING.md.
 [server]
 # WebSocket relay server URL.
 # This is where Marga subscribes to receive real-time messages.
-# Required. Example: wss://relay.example.com/ws
-websocket_url = "wss://marga.kunthive.com:8443/ws"
+# Required for Discord. Example: wss://relay.example.com/ws
+websocket_url = ""
 
 # Discord webhook URL for sending messages.
 # Create one in your Discord server: Server Settings → Integrations → Webhooks.
-# Required. Example: https://discord.com/api/webhooks/123456789/abcdef
+# Required for Discord. Example: https://discord.com/api/webhooks/123456789/abcdef
 webhook_url = ""
 
 # Relay REST API base URL for fetching message history.
 # Optional — history fetching is disabled if this is empty.
-relay_url = "https://marga.kunthive.com:8080"
+relay_url = ""
 
 # Web setup wizard URL (used when choosing "web" setup during onboarding).
-# Defaults to https://marga.kunthive.com. Override with MARGA_WEB_SETUP_URL env var.
-# Set to http://localhost:3000 for local development.
-web_setup_url = "https://marga.kunthive.com"
+# Leave empty unless you host the web wizard yourself. NOTE: the web-setup path
+# sends your Discord access token to this host — prefer terminal setup.
+web_setup_url = ""
 
 # ── Auth ─────────────────────────────────────────────────────────────────
 [auth]
@@ -71,8 +74,9 @@ provider = "discord"
 # ── Discord OAuth2 ────────────────────────────────────────────────────────
 [auth.discord]
 # Discord application client ID from https://discord.com/developers/applications
-# Pre-configured for Marga — no setup needed.
-client_id = "1503351063468572754"
+# Required for Discord auth — register your OWN application and paste its ID
+# here (or set MARGA_DISCORD_CLIENT_ID). There is no shared default.
+client_id = ""
 
 # Discord application client secret (optional for confidential/private deployments).
 # Leave empty for public/native CLI clients using PKCE.
