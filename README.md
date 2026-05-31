@@ -67,6 +67,7 @@ First run launches an interactive setup wizard.
 | `Ctrl+Y` | Toggle users panel |
 | `Ctrl+L` | Jump to bottom |
 | `Ctrl+P` / `Ctrl+N` | Previous / next channel |
+| `Ctrl+T` | Switch to the next network |
 | `Ctrl+W` | Delete word backwards |
 | `Ctrl+K` | Delete to end of line |
 | `Ctrl+U` | Clear input |
@@ -79,6 +80,7 @@ First run launches an interactive setup wizard.
 | Command | Description |
 |---------|-------------|
 | `/help` | Show available commands |
+| `/network [name]` | List networks, or switch the active one |
 | `/join #channel` | Switch to a channel |
 | `/history` | Load older messages |
 | `/search <query>` | Search local history |
