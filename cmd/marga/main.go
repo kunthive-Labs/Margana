@@ -151,13 +151,27 @@ func main() {
 	}
 	defer store.Close()
 
-	disc := discordrelay.New(cfg)
-	adapters := []network.Network{disc}
+	// Build one adapter per enabled network. Discord is included only when it is
+	// actually enabled, so a Matrix-only config needs no relay.
+	var adapters []network.Network
+	var active network.NetworkID
 	for _, n := range cfg.EnabledNetworks() {
-		if n.Type == "matrix" {
+		switch n.Type {
+		case "discord":
+			d := discordrelay.New(cfg)
+			adapters = append(adapters, d)
+			active = d.ID() // prefer Discord as the initial active network
+		case "matrix":
 			statePath, _ := config.NetworkStatePath(n.ID, "sync")
 			adapters = append(adapters, matrix.New(n, statePath))
 		}
+	}
+	if len(adapters) == 0 {
+		fmt.Fprintf(os.Stderr, "%s no networks enabled — configure Discord or add a [[networks]] entry\n", cAccent("✗"))
+		os.Exit(1)
+	}
+	if active == "" {
+		active = adapters[0].ID()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -172,6 +186,7 @@ func main() {
 	registry := commands.NewRegistry()
 	registry.Register(commands.NewHelpCmd(registry))
 	registry.Register(commands.NewJoinCmd())
+	registry.Register(commands.NewNetworkCmd())
 	registry.Register(commands.NewHistoryCmd())
 	registry.Register(commands.NewSearchCmd(store))
 	registry.Register(commands.NewQuitCmd())
@@ -190,7 +205,7 @@ func main() {
 	tui.InitImageProtocol(cfg.UI.ImageProtocol)
 	tui.ApplyTheme(cfg.UI.Theme)
 
-	model := tui.New(adapters, disc.ID(), store, registry,
+	model := tui.New(adapters, active, store, registry,
 		cfg.General.Channel, cfg.General.Username, cfg.General.DiscordID,
 		cfg.General.DiscordUsername, cfg.General.DiscordGlobalName, cfg.General.GuildName,
 		cfg.ConfiguredGuilds,
@@ -207,7 +222,9 @@ func main() {
 
 	go func() {
 		<-sigCh
-		_ = disc.Disconnect()
+		for _, a := range adapters {
+			_ = a.Disconnect()
+		}
 		cancel()
 		p.Quit()
 	}()

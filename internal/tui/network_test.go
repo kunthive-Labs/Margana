@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kunthive-Labs/Margana/internal/commands"
 	"github.com/kunthive-Labs/Margana/internal/model"
 	"github.com/kunthive-Labs/Margana/internal/network"
 )
@@ -131,5 +132,53 @@ func TestMultiplexReArmTargetsCorrectAdapter(t *testing.T) {
 	_ = updated
 	if cmd == nil {
 		t.Fatal("expected a re-arm command for the matrix adapter")
+	}
+}
+
+// TestNonActiveNetworkMessageHidden verifies a message from a non-active
+// network does not enter the visible view or channel list.
+func TestNonActiveNetworkMessageHidden(t *testing.T) {
+	discord := newFakeAdapter("discord")
+	matrix := newFakeAdapter("matrix")
+	m := newTestModel(discord, matrix) // active = discord
+
+	updated, _ := m.Update(networkEventMsg{Network: "matrix", Kind: network.EventMessage, Message: &model.Message{
+		ID:        "mx1",
+		Username:  "alice",
+		Content:   "hi from matrix",
+		Channel:   "!room:hs",
+		Timestamp: time.Now(),
+	}})
+	mm := updated.(Model)
+	if len(mm.msgs) != 0 {
+		t.Fatalf("matrix message must not show while discord is active, got %d msgs", len(mm.msgs))
+	}
+	for _, ch := range mm.channels {
+		if ch == "!room:hs" {
+			t.Fatal("non-active network channel leaked into the visible channel list")
+		}
+	}
+}
+
+// TestSwitchNetworkChangesActive verifies /network switches the active network,
+// while listing (empty target) and unknown targets leave it unchanged.
+func TestSwitchNetworkChangesActive(t *testing.T) {
+	discord := newFakeAdapter("discord")
+	matrix := newFakeAdapter("matrix")
+	m := newTestModel(discord, matrix) // active = discord
+
+	listed, _ := m.Update(commands.SwitchNetworkMsg{Network: ""})
+	if got := listed.(Model).active; got != "discord" {
+		t.Fatalf("listing networks must not change active, got %q", got)
+	}
+
+	updated, _ := m.Update(commands.SwitchNetworkMsg{Network: "matrix"})
+	if got := updated.(Model).active; got != "matrix" {
+		t.Fatalf("expected active network 'matrix', got %q", got)
+	}
+
+	stay, _ := updated.(Model).Update(commands.SwitchNetworkMsg{Network: "irc"})
+	if got := stay.(Model).active; got != "matrix" {
+		t.Fatalf("unknown network must not change active, got %q", got)
 	}
 }

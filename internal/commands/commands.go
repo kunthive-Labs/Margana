@@ -21,6 +21,12 @@ type SwitchChannelMsg struct {
 	Channel string
 }
 
+// SwitchNetworkMsg asks the TUI to make Network the active network. An empty
+// Network means "list the available networks" instead of switching.
+type SwitchNetworkMsg struct {
+	Network string
+}
+
 type TriggerHistoryLoadMsg struct{}
 
 type DeleteChannelMsg struct {

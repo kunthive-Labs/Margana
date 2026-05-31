@@ -290,7 +290,7 @@ func TestMergeMessagesKeepsDifferentRealMessagesWithSameContent(t *testing.T) {
 
 func TestSentWebsocketMessageReplacesLocalEcho(t *testing.T) {
 	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
-	m := New(nil, "", nil, nil, "general", "terminal-user", "", "discord-user", "", "test-guild", nil, "", "", "", nil, "")
+	m := New(nil, "discord", nil, nil, "general", "terminal-user", "", "discord-user", "", "test-guild", nil, "", "", "", nil, "")
 	m.sentHashes[contentHash("terminal-user", "general", "hello")] = time.Now()
 	m.msgs = []model.Message{{
 		ID:        "echo-123",
@@ -510,7 +510,7 @@ func TestInsertSortedNoDuplicateWhenTimestampEarlierThanLaterMessages(t *testing
 // reconcile (replace) the file-echo rather than inserting a duplicate.
 func TestFileEchoReconciledBySelfMessagePath(t *testing.T) {
 	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
-	m := New(nil, "", nil, nil, "general", "terminal-user", "discord-id-123", "discord-user", "Discord User", "test-guild", nil, "", "", "", nil, "")
+	m := New(nil, "discord", nil, nil, "general", "terminal-user", "discord-id-123", "discord-user", "Discord User", "test-guild", nil, "", "", "", nil, "")
 
 	// Simulate what sendFileWithEcho does: echo added, no sentHash registered.
 	m.msgs = []model.Message{{
@@ -561,7 +561,7 @@ func TestDeduplicateSentMessageCaseMismatch(t *testing.T) {
 // case-different username — must not duplicate.
 func TestNoDuplicateWhenUpgradedEchoAndCaseMismatch(t *testing.T) {
 	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
-	m := New(nil, "", nil, nil, "general", "Alice", "", "", "", "test-guild", nil, "", "", "", nil, "")
+	m := New(nil, "discord", nil, nil, "general", "Alice", "", "", "", "test-guild", nil, "", "", "", nil, "")
 	m.sentHashes[contentHash("Alice", "general", "hello")] = time.Now()
 
 	// upgradeEchoID already ran: echo-XXX → real-id.

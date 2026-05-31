@@ -328,24 +328,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case networkEventMsg:
 		ev := network.Event(msg)
+		fromActive := ev.Network == m.active
 		var cmds []tea.Cmd
 		switch ev.Kind {
 		case network.EventMessage:
 			if ev.Message != nil {
-				m, cmds = m.onMessageEvent(*ev.Message)
+				em := *ev.Message
+				if em.Network == "" {
+					em.Network = string(ev.Network)
+				}
+				m, cmds = m.onMessageEvent(em, fromActive)
 			}
 		case network.EventStatus:
+			// Status reflects whichever network most recently changed state.
 			m, cmds = m.onStatusEvent(ev.State, ev.Err)
 		case network.EventTyping:
-			if ev.Typing != nil {
+			// Typing and presence are scoped to the visible channel, so only the
+			// active network's indicators are applied.
+			if fromActive && ev.Typing != nil {
 				m, cmds = m.onTypingEvent(*ev.Typing)
 			}
 		case network.EventPresence:
-			if ev.Presence != nil {
+			if fromActive && ev.Presence != nil {
 				m, cmds = m.onPresenceEvent(*ev.Presence)
 			}
 		case network.EventPresentUsers:
-			m, cmds = m.onPresentUsers(ev.Users)
+			if fromActive {
+				m, cmds = m.onPresentUsers(ev.Users)
+			}
 		case network.EventChannelList:
 			// reserved: adapters that push topology updates land here
 		}
@@ -544,6 +554,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.initialFetchCmd(msg.Channel, 100))
 
 		return m, tea.Batch(cmds...)
+
+	case commands.SwitchNetworkMsg:
+		return m.switchNetwork(network.NetworkID(msg.Network))
 
 	case commands.DeleteChannelMsg:
 		chName := msg.Channel
@@ -816,6 +829,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.nextChannel()
 		m.replyTo = nil
 		return m, m.subscribeCmd(m.channel)
+
+	case "ctrl+t":
+		return m.cycleNetwork()
 
 	case "ctrl+r":
 		// Reply to most recent non-system message
@@ -2076,14 +2092,21 @@ func (m Model) listenNetwork(id network.NetworkID) tea.Cmd {
 	}
 }
 
-func (m Model) onMessageEvent(msg model.Message) (Model, []tea.Cmd) {
-	m.addChannel(msg.Channel)
+func (m Model) onMessageEvent(msg model.Message, fromActive bool) (Model, []tea.Cmd) {
+	// Only the active network feeds the visible channel list and message view.
+	// Messages from other networks are still persisted (and may notify) so they
+	// are ready when you switch to them.
+	if fromActive {
+		m.addChannel(msg.Channel)
+	}
 
 	if msg.EventType == "message_update" {
 		updated := msg
-		if applied := m.applyMessageUpdate(updated); applied != nil {
-			m.users = msgsToUsers(m.msgs)
-			updated = *applied
+		if fromActive {
+			if applied := m.applyMessageUpdate(updated); applied != nil {
+				m.users = msgsToUsers(m.msgs)
+				updated = *applied
+			}
 		}
 		return m, []tea.Cmd{m.persistMessageUpdate(updated)}
 	}
@@ -2106,7 +2129,7 @@ func (m Model) onMessageEvent(msg model.Message) (Model, []tea.Cmd) {
 		}
 	}
 
-	if msg.Channel != m.channel {
+	if !fromActive || msg.Channel != m.channel {
 		batch := []tea.Cmd{m.persistMessage(msg)}
 		if notifCmd != nil {
 			batch = append(batch, notifCmd)
@@ -2223,6 +2246,85 @@ func (m Model) closeAdapters() {
 			_ = a.Disconnect()
 		}
 	}
+}
+
+// networkIDs returns the connected network IDs in a stable (sorted) order.
+func (m Model) networkIDs() []network.NetworkID {
+	ids := make([]network.NetworkID, 0, len(m.adapters))
+	for id := range m.adapters {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
+// switchNetwork makes target the active network, resetting the view so the new
+// network's channels load fresh. An empty target lists available networks.
+func (m Model) switchNetwork(target network.NetworkID) (Model, tea.Cmd) {
+	if target == "" {
+		var b strings.Builder
+		b.WriteString("networks:")
+		for _, id := range m.networkIDs() {
+			marker := "  "
+			if id == m.active {
+				marker = "* "
+			}
+			b.WriteString(fmt.Sprintf("\n  %s%s", marker, id))
+		}
+		b.WriteString("\nswitch with /network <name> or ctrl+t")
+		m.msgs = append(m.msgs, commands.SystemMsg(b.String()))
+		m.scrollOffset = 0
+		return m, nil
+	}
+	if target == m.active {
+		m.msgs = append(m.msgs, commands.SystemMsg(fmt.Sprintf("already on network %q", target)))
+		m.scrollOffset = 0
+		return m, nil
+	}
+	if _, ok := m.adapters[target]; !ok {
+		m.msgs = append(m.msgs, commands.SystemMsg(fmt.Sprintf("unknown network %q — use /network to list", target)))
+		m.scrollOffset = 0
+		return m, nil
+	}
+
+	m.active = target
+	// Reset the per-network view. fetchChannelsCmd lists the new network's
+	// channels; the ChannelsResultMsg handler then auto-selects the first one
+	// (m.channel == "" is never in the new set) and loads its history.
+	m.channel = ""
+	m.channels = nil
+	m.available = make(map[string]struct{})
+	m.channelsOK = false
+	m.msgs = []model.Message{commands.SystemMsg(fmt.Sprintf("switched to network %q", target))}
+	m.scrollOffset = 0
+	m.unreadCount = 0
+	m.historyLoaded = false
+	m.allHistoryLoaded = false
+	m.loadingHistory = false
+	m.replyTo = nil
+	m.users = nil
+	m.terminalOnline = nil
+	m.typingUsers = make(map[string]time.Time)
+	m.presences = make(map[string]model.UserPresence)
+
+	return m, m.fetchChannelsCmd()
+}
+
+// cycleNetwork advances to the next connected network (ctrl+t). It is a no-op
+// when only one network is connected.
+func (m Model) cycleNetwork() (Model, tea.Cmd) {
+	ids := m.networkIDs()
+	if len(ids) < 2 {
+		return m, nil
+	}
+	cur := 0
+	for i, id := range ids {
+		if id == m.active {
+			cur = i
+			break
+		}
+	}
+	return m.switchNetwork(ids[(cur+1)%len(ids)])
 }
 
 // ref builds a ChannelRef on the active network for a channel name. For the
