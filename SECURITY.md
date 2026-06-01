@@ -27,8 +27,12 @@ Marga is a client; its security posture depends partly on how you deploy it.
   storage/retention policy is yours to set — see
   [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - **Matrix is direct.** The Matrix adapter connects straight to your homeserver
-  with no relay or third party. End-to-end encrypted rooms are surfaced but not
-  decrypted in this version.
+  with no relay or third party. End-to-end encrypted rooms are decrypted and
+  encrypted locally via the Olm machine (mautrix); plaintext never leaves your
+  machine. Olm/Megolm keys live in a local crypto database whose pickle key is
+  stored in the OS keyring, not on disk in clear. Device trust is currently
+  use-on-first-key — there is no interactive verification / cross-signing UI
+  yet, so this does not defend against a homeserver substituting device keys.
 - **Web setup caveat.** The optional "web setup" onboarding path sends your
   Discord access token to `server.web_setup_url`. Leave it empty (use terminal
   setup) unless you host that wizard yourself over HTTPS.
