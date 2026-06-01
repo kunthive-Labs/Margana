@@ -10,6 +10,10 @@ builds:
     binary: marga
     env:
       - CGO_ENABLED=0
+    # goolm = mautrix's pure-Go Olm backend, so release binaries get E2EE
+    # without a CGo dependency on system libolm.
+    tags:
+      - goolm
     goos:
       - linux
       - darwin

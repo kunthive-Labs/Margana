@@ -25,14 +25,22 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # goolm builds the pure-Go Olm backend (no CGo libolm); CGO_ENABLED=0
+      # keeps the toolchain from requiring a C compiler for E2EE.
       - name: go vet
-        run: go vet ./...
+        run: go vet -tags goolm ./...
+        env:
+          CGO_ENABLED: "0"
 
       - name: build
-        run: go build ./...
+        run: go build -tags goolm ./...
+        env:
+          CGO_ENABLED: "0"
 
       - name: test
-        run: go test ./...
+        run: go test -tags goolm ./...
+        env:
+          CGO_ENABLED: "0"
 
   format:
     name: gofmt
