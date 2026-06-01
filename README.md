@@ -17,7 +17,7 @@ formats. Two adapter styles exist:
 | Network | Style | Notes |
 |---------|-------|-------|
 | **Discord** | Relay-backed | Discord forbids driving a *user* account against its gateway (self-botting). Marga connects through a server-side bot + webhook relay instead, so your account stays ToS-compliant. Requires a running relay. |
-| **Matrix** | Direct | Connects straight to the homeserver via the client-server API (mautrix-go). No relay, no third party. The access token lives in your OS keyring; `/sync` state is cached locally. |
+| **Matrix** | Direct | Connects straight to the homeserver via the client-server API (mautrix-go). No relay, no third party. The access token lives in your OS keyring; `/sync` state is cached locally. **End-to-end encrypted rooms are decrypted and encrypted transparently** (Olm/Megolm via mautrix, keys stored locally), and **spaces are surfaced as servers**. |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full data-flow and the
 network-neutral relay contract.
@@ -37,10 +37,13 @@ make build          # → bin/marga
 Or install the binary directly with Go:
 
 ```bash
-go install github.com/kunthive-Labs/Margana/cmd/marga@latest
+go install -tags goolm github.com/kunthive-Labs/Margana/cmd/marga@latest
 ```
 
-Requires [Go](https://go.dev) 1.25+.
+Requires [Go](https://go.dev) 1.25+. The `goolm` build tag selects mautrix's
+pure-Go Olm backend for Matrix end-to-end encryption, so no system `libolm`
+or C toolchain is needed (`make build` sets it for you). Without the tag the
+build falls back to CGo `libolm`.
 
 ## Quick start
 
@@ -54,8 +57,10 @@ First run launches an interactive setup wizard.
   **placeholders** — stand up your own relay (or point at one you trust) and set
   the URLs in config. See [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
 - **Matrix** needs no relay. Add a `[[networks]]` block (below) with your
-  homeserver and user id; on first connect, supply your password once via
-  `MARGA_MATRIX_PASSWORD` and Marga stores the resulting token in your keyring.
+  homeserver and user id. On first connect Marga prompts for your password in
+  the terminal (read without echo) and stores the resulting token in your
+  keyring; for headless/CI runs, set `MARGA_MATRIX_PASSWORD` instead. Encrypted
+  rooms work out of the box, and joined spaces appear as switchable servers.
 
 ## Keyboard shortcuts
 
