@@ -238,42 +238,7 @@ func (a *Adapter) Disconnect() error {
 
 func (a *Adapter) CurrentUser() network.Identity { return a.identity }
 
-func (a *Adapter) ListServers(context.Context) ([]network.Server, error) {
-	// v1 presents the homeserver as a single server with a flat room list under
-	// it; spaces-as-servers grouping arrives in a later phase.
-	name := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(a.homeserver, "https://"), "http://"), "/")
-	if name == "" {
-		name = "matrix"
-	}
-	return []network.Server{{ID: a.homeserver, Name: name}}, nil
-}
-
-func (a *Adapter) ListChannels(ctx context.Context, _ string) ([]network.ChannelRef, error) {
-	if a.client == nil {
-		return nil, fmt.Errorf("matrix: not connected")
-	}
-	resp, err := a.client.JoinedRooms(ctx)
-	if err != nil {
-		return nil, err
-	}
-	refs := make([]network.ChannelRef, 0, len(resp.JoinedRooms))
-	for _, roomID := range resp.JoinedRooms {
-		refs = append(refs, network.ChannelRef{
-			Network: ID,
-			ID:      roomID.String(),
-			Name:    a.roomName(ctx, roomID),
-		})
-	}
-	return refs, nil
-}
-
-func (a *Adapter) roomName(ctx context.Context, roomID id.RoomID) string {
-	var content event.RoomNameEventContent
-	if err := a.client.StateEvent(ctx, roomID, event.StateRoomName, "", &content); err == nil && content.Name != "" {
-		return content.Name
-	}
-	return roomID.String()
-}
+// ListServers, ListChannels, and the space-discovery helpers live in spaces.go.
 
 func (a *Adapter) Subscribe(network.ChannelRef) error   { return nil } // sync delivers all joined rooms
 func (a *Adapter) Unsubscribe(network.ChannelRef) error { return nil }
