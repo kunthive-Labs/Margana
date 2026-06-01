@@ -1,7 +1,10 @@
 // Package matrix implements network.Network by connecting directly to a Matrix
-// homeserver via the client-server API (mautrix-go). Unlike the Discord
-// adapter it needs no relay. End-to-end encryption is out of scope for v1:
-// encrypted rooms are surfaced but their contents are not decrypted.
+// homeserver via the client-server API (mautrix-go). Unlike the Discord adapter
+// it needs no relay. End-to-end encrypted rooms are supported: the Olm machine
+// (mautrix cryptohelper, pure-Go Olm) decrypts incoming events during /sync and
+// encrypts outgoing messages, with keys stored in a local crypto database and
+// the OS keyring. If crypto cannot be initialized, the adapter degrades to
+// surfacing encrypted rooms without decrypting them.
 package matrix
 
 import (
@@ -14,6 +17,7 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/crypto/cryptohelper"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -36,6 +40,10 @@ type Adapter struct {
 
 	client   *mautrix.Client
 	identity network.Identity
+
+	// crypto is the Olm machine for end-to-end encryption; nil when E2EE could
+	// not be initialized (encrypted rooms then stay undecrypted).
+	crypto *cryptohelper.CryptoHelper
 
 	// password holds a credential gathered from the environment or an
 	// interactive prompt, used once during login and then cleared.
@@ -112,6 +120,14 @@ func (a *Adapter) Connect(ctx context.Context) error {
 
 	a.client = client
 	a.registerHandlers()
+
+	// Enable end-to-end encryption. On failure, degrade gracefully: connect
+	// anyway, leaving encrypted rooms undecrypted rather than failing startup.
+	if helper, err := setupCrypto(ctx, client, cryptoDBPath(a.storePath)); err != nil {
+		fmt.Fprintf(os.Stderr, "matrix: end-to-end encryption unavailable: %v\n", err)
+	} else {
+		a.crypto = helper
+	}
 
 	syncCtx, cancel := context.WithCancel(ctx)
 	a.cancel = cancel
@@ -271,6 +287,9 @@ func (a *Adapter) Disconnect() error {
 	if a.client != nil {
 		a.client.StopSync()
 	}
+	if a.crypto != nil {
+		_ = a.crypto.Close()
+	}
 	return nil
 }
 
@@ -312,11 +331,22 @@ func (a *Adapter) FetchHistory(ctx context.Context, ref network.ChannelRef, limi
 	// Backward pagination yields newest-first, matching the interface contract.
 	msgs := make([]model.Message, 0, len(resp.Chunk))
 	for _, evt := range resp.Chunk {
+		// Decrypt encrypted history when we have the keys; skip if we can't
+		// (no session yet) rather than showing ciphertext.
+		if evt.Type == event.EventEncrypted && a.crypto != nil {
+			dec, err := a.crypto.Decrypt(ctx, evt)
+			if err != nil {
+				continue
+			}
+			evt = dec
+		}
 		if evt.Type != event.EventMessage {
 			continue
 		}
-		if err := evt.Content.ParseRaw(evt.Type); err != nil {
-			continue
+		if evt.Content.Parsed == nil {
+			if err := evt.Content.ParseRaw(evt.Type); err != nil {
+				continue
+			}
 		}
 		// Skip edits during backfill; the original is shown and live /sync
 		// applies edits as they arrive.
