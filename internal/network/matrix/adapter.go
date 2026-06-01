@@ -5,6 +5,7 @@
 package matrix
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -35,6 +36,10 @@ type Adapter struct {
 
 	client   *mautrix.Client
 	identity network.Identity
+
+	// password holds a credential gathered from the environment or an
+	// interactive prompt, used once during login and then cleared.
+	password string
 
 	events chan network.Event
 	cancel context.CancelFunc
@@ -80,6 +85,14 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	token, _ := credstore.Get("matrix", "access_token")
 	deviceID, _ := credstore.Get("matrix", "device_id")
 
+	// First run (no stored token): gather any missing connection details and a
+	// password, interactively if stdin is a terminal, else from the environment.
+	if token == "" {
+		if err := a.resolveCredentials(); err != nil {
+			return err
+		}
+	}
+
 	if a.homeserver == "" || a.userID == "" {
 		return fmt.Errorf("matrix: homeserver and user_id must be configured")
 	}
@@ -92,7 +105,7 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	client.Store = newFileSyncStore(a.storePath)
 
 	if token == "" {
-		if err := a.passwordLogin(ctx, client); err != nil {
+		if err := a.login(ctx, client); err != nil {
 			return err
 		}
 	}
@@ -106,21 +119,46 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	return nil
 }
 
-// passwordLogin performs an m.login.password flow using MARGA_MATRIX_PASSWORD
-// and persists the returned token/device to the keyring. v1 onboarding hook;
-// a full setup wizard arrives in a later phase.
-func (a *Adapter) passwordLogin(ctx context.Context, client *mautrix.Client) error {
-	password := os.Getenv("MARGA_MATRIX_PASSWORD")
-	if password == "" {
-		return fmt.Errorf("matrix: no stored token and MARGA_MATRIX_PASSWORD is unset")
+// resolveCredentials populates a.password (and any missing homeserver/user id)
+// before login. MARGA_MATRIX_PASSWORD wins when set — keeping headless and CI
+// runs non-interactive. Otherwise, if stdin is a terminal, it prompts; the
+// homeserver and user id are only asked for when not already configured.
+func (a *Adapter) resolveCredentials() error {
+	if pw := os.Getenv("MARGA_MATRIX_PASSWORD"); pw != "" {
+		a.password = pw
+		return nil
+	}
+	if !stdinIsTerminal() {
+		return fmt.Errorf("matrix: no stored token — set MARGA_MATRIX_PASSWORD or run in an interactive terminal to log in")
+	}
+
+	fmt.Fprintln(os.Stderr, "Matrix login — credentials are exchanged for a token stored in your OS keyring.")
+	d, err := gatherLogin(os.Stderr, bufio.NewReader(os.Stdin), readSecret, a.homeserver, a.userID)
+	if err != nil {
+		return fmt.Errorf("matrix: %w", err)
+	}
+	a.homeserver = d.homeserver
+	a.userID = d.userID
+	a.identity.UserID = d.userID
+	a.identity.Username = localpart(d.userID)
+	a.password = d.password
+	return nil
+}
+
+// login performs an m.login.password flow with the resolved password and
+// persists the returned token/device to the keyring, then clears the password.
+func (a *Adapter) login(ctx context.Context, client *mautrix.Client) error {
+	if a.password == "" {
+		return fmt.Errorf("matrix: no password available for login")
 	}
 	resp, err := client.Login(ctx, &mautrix.ReqLogin{
 		Type:                     mautrix.AuthTypePassword,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: localpart(a.userID)},
-		Password:                 password,
+		Password:                 a.password,
 		InitialDeviceDisplayName: "Margana",
 		StoreCredentials:         true,
 	})
+	a.password = "" // do not keep the plaintext password in memory after use
 	if err != nil {
 		return fmt.Errorf("matrix: login: %w", err)
 	}

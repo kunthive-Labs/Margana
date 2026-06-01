@@ -9,6 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/term v0.43.0
 	maunium.net/go/mautrix v0.28.0
 	modernc.org/sqlite v1.50.1
 )
