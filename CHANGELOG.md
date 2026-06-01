@@ -13,9 +13,28 @@ All notable changes to Marga are documented here. The format is based on
   pagination cursor), so `/history` now works on Matrix.
 - Matrix `ListServers` (surfaces the homeserver as a server) and presence
   broadcast via `SetStatus`.
+- **Matrix end-to-end encryption.** Encrypted rooms are decrypted on `/sync`
+  and during history backfill, and outgoing messages to encrypted rooms are
+  encrypted automatically, via the mautrix Olm machine (pure-Go `goolm`
+  backend). Olm/Megolm keys are kept in a local crypto store whose pickle key
+  lives in the OS keyring. If crypto can't initialize, the client still
+  connects with encrypted rooms left undecrypted.
+- **Matrix spaces as servers.** Joined spaces are surfaced through
+  `ListServers`/`ListChannels` alongside a "home" server for ungrouped rooms;
+  the flat room list is unchanged for clients that don't switch servers.
+- **Interactive Matrix login.** With no stored token and an interactive
+  terminal, Marga prompts for any missing homeserver/user id and reads the
+  password without echo, instead of requiring `MARGA_MATRIX_PASSWORD`.
+- `Encryption` field on `network.Capabilities` so adapters can advertise E2EE.
+- Test coverage for previously untested packages (model, network types,
+  credstore, guilds, discordrelay, setup helpers, matrix media/store).
 - `CONTRIBUTING.md` and `SECURITY.md`.
 
 ### Changed
+- **Builds use the pure-Go `goolm` Olm backend** (`-tags goolm`,
+  `CGO_ENABLED=0`) across the Makefile, CI, and goreleaser, so E2EE compiles
+  into static binaries without a system `libolm`/C toolchain. Installing with
+  `go install` now needs `-tags goolm`.
 - **Config is now bring-your-own.** Removed the bundled relay endpoints and the
   shared Discord application client ID. `client_id` and relay URLs must be set
   via config or `MARGA_*` env vars; startup fails with an actionable error if a
@@ -31,6 +50,9 @@ All notable changes to Marga are documented here. The format is based on
 ### Security
 - No credentials or shared infrastructure endpoints are embedded in the binary
   or config defaults.
+- Matrix E2EE keys and the crypto-store pickle key stay local (crypto database
+  on disk, pickle key in the OS keyring); encrypted plaintext never leaves the
+  client. Device trust is use-on-first-key (no verification UI yet).
 
 ## [0.1.0] - Initial
 
