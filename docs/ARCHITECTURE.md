@@ -121,6 +121,28 @@ never sees protocol-specific wire formats. Two adapter styles exist:
   network with no relay and no third party storing plaintext. Matrix uses the
   client-server API (mautrix-go); the access token is stored in the OS keyring
   (`marga-matrix`), and `/sync` state is cached locally for fast restarts.
+  Joined **spaces are surfaced as servers** (`ListServers`), with a "home"
+  server for rooms in no space; the flat room list is still available.
+
+### Matrix end-to-end encryption
+
+Encrypted rooms are decrypted and encrypted locally — plaintext never leaves
+your machine. On connect the adapter starts an Olm machine via mautrix's
+`cryptohelper` (the pure-Go `goolm` backend; build with `-tags goolm`):
+
+- **Decryption** is automatic. The helper handles `m.room.encrypted` events
+  during `/sync` and re-dispatches the plaintext through the normal message
+  handler; history backfill is decrypted inline when the keys are available.
+- **Encryption** on send is automatic for rooms the homeserver reports as
+  encrypted — `Send`/`SendFile`/`Edit` need no special casing.
+- **Key storage.** Olm/Megolm sessions live in a local SQLite crypto store
+  (`crypto.db`, next to the sync cache). The *pickle key* that encrypts that
+  store at rest is generated once and kept in the OS keyring (`marga-matrix`,
+  key `pickle_key`) — never written to disk in clear.
+- **Graceful degradation.** If crypto can't initialize, the client still
+  connects and shows encrypted rooms as undecryptable rather than failing.
+- **Scope.** Trust is currently use-on-first-key (no interactive device
+  verification / cross-signing UI yet).
 
 Each adapter exposes the same interface: connect, list servers/channels,
 subscribe, fetch history, send/file/edit, and a single `Events()` channel of
