@@ -22,7 +22,7 @@ func TestChannelRefKeyIsStableAndScoped(t *testing.T) {
 func TestChannelRefKeyDistinguishesNetworksAndServers(t *testing.T) {
 	base := ChannelRef{Network: "discord", ServerID: "g1", ID: "general"}
 	cases := []ChannelRef{
-		{Network: "matrix", ServerID: "g1", ID: "general"}, // different network
+		{Network: "matrix", ServerID: "g1", ID: "general"},  // different network
 		{Network: "discord", ServerID: "g2", ID: "general"}, // different server
 		{Network: "discord", ServerID: "g1", ID: "random"},  // different channel
 	}
