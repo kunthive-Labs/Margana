@@ -42,6 +42,9 @@ func TestAdapterIdentityAndCapabilities(t *testing.T) {
 	if caps.Reactions {
 		t.Error("Reactions not supported yet, should be false")
 	}
+	if caps.Encryption {
+		t.Error("relay transport has no per-message E2EE, Encryption should be false")
+	}
 
 	id := a.CurrentUser()
 	if id.Network != "discord" || id.UserID != "42" || id.Username != "alice" || id.DisplayName != "Alice" {

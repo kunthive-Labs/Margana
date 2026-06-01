@@ -19,6 +19,7 @@ type Capabilities struct {
 	History    bool
 	ServerList bool // false => flat channel list, no "servers"
 	Reactions  bool
+	Encryption bool // adapter transparently handles end-to-end encrypted rooms
 }
 
 // Server is a top-level grouping of channels (Discord guild, Matrix space,

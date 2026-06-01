@@ -71,6 +71,7 @@ func (a *Adapter) Capabilities() network.Capabilities {
 		History:    true,
 		ServerList: true,
 		Reactions:  false,
+		Encryption: false, // the relay handles transport; no per-message E2EE
 	}
 }
 

@@ -82,8 +82,9 @@ func (a *Adapter) Capabilities() network.Capabilities {
 		Typing:     true,
 		Presence:   true,
 		History:    true,
-		ServerList: true, // the homeserver is surfaced as a single server
+		ServerList: true, // homeserver + joined spaces are surfaced as servers
 		Reactions:  false,
+		Encryption: true, // E2EE rooms are decrypted/encrypted when crypto inits
 	}
 }
 
