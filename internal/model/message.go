@@ -1,3 +1,7 @@
+// Package model defines the network-neutral data types — messages,
+// attachments, typing events, and user presence — that every network adapter
+// produces and the TUI consumes, so the UI never sees protocol-specific wire
+// formats.
 package model
 
 import "time"

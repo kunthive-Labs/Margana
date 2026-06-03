@@ -1,3 +1,5 @@
+// Package guilds is a small client for the relay's guild-listing endpoint, used
+// to discover which Discord servers the relay is configured for.
 package guilds
 
 import (

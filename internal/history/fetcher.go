@@ -1,3 +1,6 @@
+// Package history fetches older messages from the Discord relay's REST API and
+// converts the relay's payloads into the network-neutral model.Message type
+// consumed by the TUI.
 package history
 
 import (

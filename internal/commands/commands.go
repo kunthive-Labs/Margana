@@ -1,3 +1,5 @@
+// Package commands implements Marga's slash commands (/help, /join, /search,
+// /network, …) and the registry that parses input and dispatches to them.
 package commands
 
 import (
