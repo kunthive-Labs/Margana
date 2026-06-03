@@ -1,9 +1,16 @@
+// Command marga is the entry point for Marga, a terminal-native, multi-network
+// chat client. It loads configuration, runs first-run setup if needed, opens
+// the local store, connects each enabled network adapter, and launches the TUI.
+// Run `marga --help` for command-line flags.
 package main
 
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,6 +23,7 @@ import (
 	"github.com/kunthive-Labs/Margana/internal/config"
 	"github.com/kunthive-Labs/Margana/internal/db"
 	"github.com/kunthive-Labs/Margana/internal/guilds"
+	"github.com/kunthive-Labs/Margana/internal/logging"
 	"github.com/kunthive-Labs/Margana/internal/network"
 	"github.com/kunthive-Labs/Margana/internal/network/discordrelay"
 	"github.com/kunthive-Labs/Margana/internal/network/matrix"
@@ -71,6 +79,77 @@ func printGreeting() {
 	fmt.Println()
 }
 
+// cliFlags holds the parsed command-line options.
+type cliFlags struct {
+	setup    bool
+	version  bool
+	help     bool
+	debug    bool
+	logFile  string
+	logLevel string
+}
+
+// parseFlags parses Marga's command-line flags. It tolerates the --config/-c
+// flag (consumed separately by the config loader) so both can coexist.
+func parseFlags(args []string) (cliFlags, error) {
+	var f cliFlags
+	var configPath string // accepted here so -c/--config doesn't error; resolved by config.Load
+	fs := flag.NewFlagSet("marga", flag.ContinueOnError)
+	fs.SetOutput(io.Discard) // we print our own usage
+	fs.BoolVar(&f.setup, "setup", false, "force the setup wizard")
+	fs.BoolVar(&f.setup, "s", false, "force the setup wizard (shorthand)")
+	fs.BoolVar(&f.version, "version", false, "print version and exit")
+	fs.BoolVar(&f.version, "v", false, "print version and exit (shorthand)")
+	fs.BoolVar(&f.help, "help", false, "print usage and exit")
+	fs.BoolVar(&f.help, "h", false, "print usage and exit (shorthand)")
+	fs.BoolVar(&f.debug, "debug", false, "enable debug logging to the default log file")
+	fs.StringVar(&f.logFile, "log-file", "", "write logs to this file")
+	fs.StringVar(&f.logLevel, "log-level", "", "log level: debug, info, warn, error")
+	fs.StringVar(&configPath, "config", "", "path to config file")
+	fs.StringVar(&configPath, "c", "", "path to config file (shorthand)")
+	err := fs.Parse(args)
+	return f, err
+}
+
+func printUsage() {
+	fmt.Printf(`marga — terminal-native, multi-network chat (v%s)
+
+Usage:
+  marga [flags]
+
+Flags:
+  -c, --config PATH    path to config file (default: platform config dir)
+  -s, --setup          force the interactive setup wizard
+      --debug          enable debug logging to the default log file
+      --log-file PATH   write logs to PATH (enables logging)
+      --log-level LVL   log level: debug, info, warn, error (default: info)
+  -v, --version        print version and exit
+  -h, --help           print this help and exit
+
+Logging is off by default. Logs are written to a file (never the terminal,
+which would corrupt the TUI). See docs/CONFIGURATION.md and
+docs/TROUBLESHOOTING.md.
+`, version)
+}
+
+// setupLogging resolves logging configuration (config file + env, overridden by
+// flags) and opens the logger. A failure to open the log file is reported to
+// stderr but never fatal: Marga continues with logging disabled.
+func setupLogging(cfg *config.Config, flags cliFlags) *logging.Logger {
+	defaultLogPath, _ := config.DefaultLogPath()
+	opts := logging.Resolve(
+		logging.Settings{Level: cfg.Logging.Level, File: cfg.Logging.File, Format: cfg.Logging.Format},
+		logging.Flags{Debug: flags.debug, File: flags.logFile, Level: flags.logLevel},
+		defaultLogPath,
+	)
+	l, err := logging.New(opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s logging disabled: %v\n", cAccent("!"), err)
+		return logging.Disabled()
+	}
+	return l
+}
+
 func readLineWithSignal(ctx context.Context, reader *bufio.Reader) (string, error) {
 	type result struct {
 		text string
@@ -92,15 +171,25 @@ func readLineWithSignal(ctx context.Context, reader *bufio.Reader) (string, erro
 func main() {
 	_ = godotenv.Load()
 
+	flags, err := parseFlags(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s %v\n\n", cAccent("✗"), err)
+		printUsage()
+		os.Exit(2)
+	}
+	if flags.help {
+		printUsage()
+		return
+	}
+	if flags.version {
+		fmt.Printf("marga %s\n", version)
+		return
+	}
+
 	clearScreen()
 	printGreeting()
 
-	forceSetup := false
-	for _, arg := range os.Args[1:] {
-		if arg == "--setup" || arg == "-s" {
-			forceSetup = true
-		}
-	}
+	forceSetup := flags.setup
 
 	configPath, err := config.ConfigPathFromArgs(os.Args[1:])
 	if err != nil {
@@ -113,6 +202,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s config: %v\n", cAccent("✗"), err)
 		os.Exit(1)
 	}
+
+	// Set up logging as early as the config allows. It is off unless the
+	// operator opted in (--debug/--log-file or the [logging] config section).
+	appLogger := setupLogging(cfg, flags)
+	defer appLogger.Close()
+	appLogger.Info("marga starting", "version", version, "config", configPath)
 
 	if err := discord.EnsureUserConfig(context.Background(), cfg, configPath); err != nil {
 		fmt.Fprintf(os.Stderr, "%s auth: %v\n", cAccent("✗"), err)
@@ -159,11 +254,14 @@ func main() {
 		switch n.Type {
 		case "discord":
 			d := discordrelay.New(cfg)
+			d.SetLogger(appLogger.StdLogger("discord", slog.LevelInfo))
 			adapters = append(adapters, d)
 			active = d.ID() // prefer Discord as the initial active network
 		case "matrix":
 			statePath, _ := config.NetworkStatePath(n.ID, "sync")
-			adapters = append(adapters, matrix.New(n, statePath))
+			mx := matrix.New(n, statePath)
+			mx.SetLogger(appLogger)
+			adapters = append(adapters, mx)
 		}
 	}
 	if len(adapters) == 0 {
@@ -180,6 +278,9 @@ func main() {
 	for _, a := range adapters {
 		if err := a.Connect(ctx); err != nil {
 			fmt.Fprintf(os.Stderr, "%s %s: %v\n", cAccent("!"), a.ID(), err)
+			appLogger.Warn("network connect failed", "network", a.ID(), "err", err)
+		} else {
+			appLogger.Info("network connected", "network", a.ID())
 		}
 	}
 
@@ -212,6 +313,7 @@ func main() {
 		cfg.Auth.Discord.AccessToken, cfg.Server.BotClientID,
 		configPath, cfg, version,
 	)
+	model = model.WithLogger(appLogger.StdLogger("tui", slog.LevelInfo))
 	if cfg.Github.Repo != "" {
 		model = model.WithGithub(cfg.Github.Repo, cfg.Github.Token)
 	}
@@ -222,6 +324,7 @@ func main() {
 
 	go func() {
 		<-sigCh
+		appLogger.Info("shutdown signal received, disconnecting networks")
 		for _, a := range adapters {
 			_ = a.Disconnect()
 		}
