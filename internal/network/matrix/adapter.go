@@ -11,17 +11,20 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto/cryptohelper"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/kunthive-Labs/Margana/internal/config"
+	"github.com/kunthive-Labs/Margana/internal/logging"
 	"github.com/kunthive-Labs/Margana/internal/model"
 	"github.com/kunthive-Labs/Margana/internal/network"
 	"github.com/kunthive-Labs/Margana/internal/network/credstore"
@@ -54,6 +57,10 @@ type Adapter struct {
 
 	histMu     sync.Mutex
 	histTokens map[string]string // roomID -> next backward pagination token
+
+	// logger captures adapter lifecycle events and (when enabled) mautrix's
+	// own client/crypto logs. Defaults to a disabled no-op logger.
+	logger *logging.Logger
 }
 
 // New builds a Matrix adapter from its [[networks]] entry. Credentials are read
@@ -70,6 +77,17 @@ func New(n config.NetworkConfig, storePath string) *Adapter {
 		},
 		events:     make(chan network.Event, 256),
 		histTokens: make(map[string]string),
+		logger:     logging.Disabled(),
+	}
+}
+
+// SetLogger enables Matrix diagnostics. Adapter lifecycle events are written via
+// slog, and mautrix's own client/crypto logs are routed to the same destination
+// (as zerolog JSON lines). Off by default; call before Connect to capture
+// connection setup.
+func (a *Adapter) SetLogger(l *logging.Logger) {
+	if l != nil {
+		a.logger = l
 	}
 }
 
@@ -113,6 +131,15 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	client.DeviceID = id.DeviceID(deviceID)
 	client.Store = newFileSyncStore(a.storePath)
 
+	// Route mautrix's internal client/crypto logs to the same file (as zerolog
+	// JSON lines) when logging is enabled; otherwise leave its default Nop
+	// logger in place so nothing reaches the terminal.
+	if a.logger.Enabled() {
+		client.Log = zerolog.New(a.logger.Writer()).
+			Level(zerologLevel(a.logger.Level())).
+			With().Timestamp().Str("component", "matrix-mautrix").Logger()
+	}
+
 	if token == "" {
 		if err := a.login(ctx, client); err != nil {
 			return err
@@ -126,14 +153,33 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	// anyway, leaving encrypted rooms undecrypted rather than failing startup.
 	if helper, err := setupCrypto(ctx, client, cryptoDBPath(a.storePath)); err != nil {
 		fmt.Fprintf(os.Stderr, "matrix: end-to-end encryption unavailable: %v\n", err)
+		a.logger.Named("matrix").Warn("end-to-end encryption unavailable", "err", err)
 	} else {
 		a.crypto = helper
 	}
+
+	a.logger.Named("matrix").Info("connected",
+		"homeserver", a.homeserver, "user_id", a.userID, "encryption", a.crypto != nil)
 
 	syncCtx, cancel := context.WithCancel(ctx)
 	a.cancel = cancel
 	go a.syncLoop(syncCtx)
 	return nil
+}
+
+// zerologLevel maps a slog level onto the nearest zerolog level so mautrix logs
+// honor the configured verbosity.
+func zerologLevel(l slog.Level) zerolog.Level {
+	switch {
+	case l <= slog.LevelDebug:
+		return zerolog.DebugLevel
+	case l <= slog.LevelInfo:
+		return zerolog.InfoLevel
+	case l <= slog.LevelWarn:
+		return zerolog.WarnLevel
+	default:
+		return zerolog.ErrorLevel
+	}
 }
 
 // resolveCredentials populates a.password (and any missing homeserver/user id)
@@ -181,6 +227,7 @@ func (a *Adapter) login(ctx context.Context, client *mautrix.Client) error {
 	}
 	_ = credstore.Set("matrix", "access_token", resp.AccessToken)
 	_ = credstore.Set("matrix", "device_id", resp.DeviceID.String())
+	a.logger.Named("matrix").Info("logged in via password", "user_id", a.userID, "device_id", resp.DeviceID.String())
 	return nil
 }
 
@@ -198,6 +245,7 @@ func (a *Adapter) syncLoop(ctx context.Context) {
 			return
 		}
 		// Transient sync failure: report reconnecting and retry after a pause.
+		a.logger.Named("matrix").Warn("sync failed, retrying", "err", err)
 		a.emit(ctx, network.Event{Network: ID, Kind: network.EventStatus, State: network.StateReconnecting, Err: err})
 		select {
 		case <-time.After(5 * time.Second):
