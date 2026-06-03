@@ -21,6 +21,11 @@
 #   MARGA_HISTORY_LIMIT          → ui.history_limit
 #   MARGA_GITHUB_TOKEN           → github.token
 #   MARGA_GITHUB_REPO            → github.repo
+#   MARGA_LOG_LEVEL              → logging.level (debug/info/warn/error)
+#   MARGA_LOG_FILE               → logging.file
+#   MARGA_LOG_FORMAT             → logging.format (text/json)
+#
+# See docs/CONFIGURATION.md for the complete reference.
 
 # ── General ──────────────────────────────────────────────────────────────
 [general]
@@ -131,6 +136,22 @@ bell_on_mention = false
 # Channels for which mention notifications (and the bell) are suppressed.
 # Case-insensitive. Example: muted_channels = ["bots", "ci-spam"]
 muted_channels = []
+
+# ── Logging ────────────────────────────────────────────────────────────────
+# Diagnostic logging is OFF by default. Marga is a full-screen TUI, so logs are
+# written to a FILE (never the terminal, which would corrupt the display).
+# Enable logging by setting `file` here, or at runtime with `marga --debug` or
+# `marga --log-file PATH`. See docs/TROUBLESHOOTING.md.
+[logging]
+# Minimum level to record: debug, info, warn, or error. Default: info.
+level = "info"
+
+# Destination path. Empty disables logging. `marga --debug` defaults this to
+# <data-dir>/marga.log (e.g. ~/.local/share/marga/marga.log on Linux).
+file = ""
+
+# Encoding: "text" (human-readable, default) or "json" (one object per line).
+format = "text"
 
 # ── Additional networks (experimental) ─────────────────────────────────────
 # Marga speaks to multiple chat networks behind one TUI. Discord (above) is
