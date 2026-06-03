@@ -6,6 +6,7 @@ package discordrelay
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/kunthive-Labs/Margana/internal/config"
@@ -58,6 +59,12 @@ func New(cfg *config.Config) *Adapter {
 		events: make(chan network.Event, 256),
 		done:   make(chan struct{}),
 	}
+}
+
+// SetLogger directs the adapter's WebSocket client diagnostics to l. Off by
+// default. Wired from cmd/marga when logging is enabled.
+func (a *Adapter) SetLogger(l *log.Logger) {
+	a.ws.SetLogger(l)
 }
 
 func (a *Adapter) ID() network.NetworkID { return ID }
@@ -162,8 +169,9 @@ func (a *Adapter) FetchSince(ctx context.Context, ref network.ChannelRef, since 
 
 func (a *Adapter) Events() <-chan network.Event { return a.events }
 
-// Raw accessors let the TUI/commands keep using the underlying clients during
-// the incremental migration. New code should prefer the interface methods.
+// WSClient returns the underlying WebSocket client. It and the sibling raw
+// accessors below let the TUI/commands keep using the wrapped clients during
+// the incremental migration; new code should prefer the interface methods.
 func (a *Adapter) WSClient() *wsclient.Client { return a.ws }
 func (a *Adapter) Sender() *webhook.Sender    { return a.sender }
 func (a *Adapter) Fetcher() *history.Fetcher  { return a.fetcher }

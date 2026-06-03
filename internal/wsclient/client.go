@@ -1,3 +1,7 @@
+// Package wsclient is the WebSocket client for Marga's Discord relay. It
+// maintains the live event stream (messages, typing, presence, status) with
+// automatic reconnect and exponential backoff, exposing each event class as a
+// channel.
 package wsclient
 
 import (
@@ -64,6 +68,14 @@ func New(url, username, channel, apiKey string) *Client {
 		termUsersCh: make(chan []string, 16),
 		done:        make(chan struct{}),
 		log:         log.New(io.Discard, "", 0),
+	}
+}
+
+// SetLogger directs the client's diagnostic output (connect/retry/read errors,
+// dropped messages) to l. By default the client discards all log output.
+func (c *Client) SetLogger(l *log.Logger) {
+	if l != nil {
+		c.log = l
 	}
 }
 
@@ -152,7 +164,7 @@ func (c *Client) identify() error {
 		Action   string `json:"action"`
 		Username string `json:"username"`
 	}{Action: "identify", Username: c.username}
-	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 	return c.conn.WriteJSON(msg)
 }
 
@@ -171,7 +183,7 @@ func (c *Client) SendStatus(status string) error {
 		Status:   status,
 		Username: c.username,
 	}
-	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 	return c.conn.WriteJSON(msg)
 }
 
@@ -188,7 +200,7 @@ func (c *Client) Subscribe(channel string) error {
 		Action:  "subscribe",
 		Channel: channel,
 	}
-	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 	if err := c.conn.WriteJSON(msg); err != nil {
 		return fmt.Errorf("subscribe write: %w", err)
 	}
@@ -209,7 +221,7 @@ func (c *Client) Unsubscribe(channel string) error {
 		Action:  "unsubscribe",
 		Channel: channel,
 	}
-	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 	if err := c.conn.WriteJSON(msg); err != nil {
 		return fmt.Errorf("unsubscribe write: %w", err)
 	}
@@ -222,7 +234,7 @@ func (c *Client) Close() error {
 		close(c.done)
 		c.connMu.Lock()
 		if c.conn != nil {
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			err = c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			_ = c.conn.Close()
 			c.conn = nil
