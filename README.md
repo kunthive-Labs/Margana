@@ -92,10 +92,38 @@ First run launches an interactive setup wizard.
 | `/clear` | Clear chat view |
 | `/quit` | Exit |
 
+## Command-line flags
+
+| Flag | Description |
+|------|-------------|
+| `-c`, `--config PATH` | Use a specific config file |
+| `-s`, `--setup` | Force the interactive setup wizard |
+| `--debug` | Enable debug logging to the default log file |
+| `--log-file PATH` | Write logs to `PATH` (enables logging) |
+| `--log-level LEVEL` | `debug`, `info`, `warn`, or `error` |
+| `-v`, `--version` | Print version and exit |
+| `-h`, `--help` | Print usage and exit |
+
+## Logging & troubleshooting
+
+Logging is **off by default**. Marga is a full-screen TUI, so logs are written
+to a **file**, never the terminal. Turn it on when something needs diagnosing:
+
+```bash
+marga --debug                    # debug level → <data-dir>/marga.log
+tail -f ~/.local/share/marga/marga.log
+```
+
+See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common issues and
+[docs/OPERATIONS.md](docs/OPERATIONS.md) for headless use, log rotation,
+backups, and upgrades.
+
 ## Configuration
 
 Config file at `~/.config/marga/config.toml`. Override any field via env vars
-(`MARGA_USERNAME`, `MARGA_THEME`, …).
+(`MARGA_USERNAME`, `MARGA_THEME`, …). The complete reference — every field, env
+var, file path, and the keyring layout — is in
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ```toml
 [general]

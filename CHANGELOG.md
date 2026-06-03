@@ -7,6 +7,20 @@ All notable changes to Marga are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **File-based logging.** A new `internal/logging` package (built on `log/slog`)
+  provides leveled, structured diagnostics written to a file — never the
+  terminal, which would corrupt the TUI. Off by default; enable with `--debug`,
+  `--log-file PATH`, `--log-level`, the `[logging]` config section, or
+  `MARGA_LOG_*` env vars. Logs are tagged per `component` (`discord`, `matrix`,
+  `tui`, …), and mautrix's own Matrix logs are routed to the same file.
+- New CLI flags: `--debug`, `--log-file`, `--log-level`, `--version`/`-v`,
+  `--help`/`-h`, plus startup/connect/shutdown lifecycle logging.
+- Reference documentation: [docs/CONFIGURATION.md](docs/CONFIGURATION.md),
+  [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), and
+  [docs/OPERATIONS.md](docs/OPERATIONS.md); GoDoc package comments across the
+  internal packages.
+- Supply-chain/quality CI: `golangci-lint` (config in `.golangci.yml`),
+  `govulncheck`, a `-race` test job, and Dependabot for Go modules and Actions.
 - `/network [name]` command and `Ctrl+T` shortcut to list and switch the active
   network from the TUI.
 - Matrix history backfill (`FetchHistory` via `/messages` with a per-room
@@ -46,6 +60,13 @@ All notable changes to Marga are documented here. The format is based on
   persisted in the background).
 - Adapters are built from the enabled-networks list, so a Discord adapter is no
   longer created for Matrix-only setups.
+
+### Fixed
+- `marga --setup` (and any other flag beyond `-c`/`--config`) no longer fails at
+  startup with `flag provided but not defined`. Config-path parsing now ignores
+  unknown flags instead of rejecting them.
+- Empty test assertion in the input-handling tests now actually asserts.
+- Various `staticcheck` findings and intentionally-ignored errors made explicit.
 
 ### Security
 - No credentials or shared infrastructure endpoints are embedded in the binary
