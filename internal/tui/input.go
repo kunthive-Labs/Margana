@@ -451,7 +451,7 @@ func handleInputKey(msg tea.KeyMsg, m *InputModel) (bool, string) {
 		m.Clear()
 	case "ctrl+v":
 		if text := readClipboard(); text != "" {
-			for _, r := range []rune(text) {
+			for _, r := range text {
 				m.Insert(r)
 			}
 		}

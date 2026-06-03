@@ -1,3 +1,6 @@
+// Package db is Marga's local SQLite store for messages, channels, presence,
+// and notifications, with FTS5 full-text search over message history. Each
+// Discord server (and other networks) gets its own database file.
 package db
 
 import (
@@ -347,7 +350,7 @@ func (s *Store) ReplaceChannels(names []string) error {
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.Exec(`DELETE FROM channels`); err != nil {
 		return fmt.Errorf("clearing channels: %w", err)

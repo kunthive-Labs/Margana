@@ -1,3 +1,5 @@
+// Package webhook sends outbound Discord messages — plain text, file uploads,
+// and edits — through a configured Discord webhook or the relay's send API.
 package webhook
 
 import (
@@ -250,7 +252,7 @@ func (s *Sender) sendViaWebhook(content string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Discord rejected the message (HTTP %d)", resp.StatusCode)
+		return fmt.Errorf("message rejected by Discord (HTTP %d)", resp.StatusCode)
 	}
 
 	return nil

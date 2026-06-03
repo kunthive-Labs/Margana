@@ -171,6 +171,7 @@ func TestHandleInputKeyCtrlW(t *testing.T) {
 	original := m2.Value()
 	handleInputKey(tea.KeyMsg{}, &m2)
 	if m2.Value() != original {
+		t.Errorf("empty key event changed the input: got %q, want %q", m2.Value(), original)
 	}
 }
 

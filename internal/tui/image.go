@@ -145,7 +145,7 @@ func getCacheDir() string {
 		return ""
 	}
 	dir := filepath.Join(home, ".cache", "marga", "images")
-	os.MkdirAll(dir, 0700)
+	_ = os.MkdirAll(dir, 0700)
 	return dir
 }
 

@@ -1,3 +1,6 @@
+// Package setup runs Marga's interactive first-run wizard: it walks the user
+// through Discord authentication, relay endpoints, and server selection, then
+// writes the resulting configuration.
 package setup
 
 import (
@@ -324,7 +327,7 @@ func handleInviteBot(ctx context.Context, reader *bufio.Reader, cfg *config.Conf
 	step("Invite the bot to your server")
 	fmt.Println()
 	fmt.Printf("  %s %s\n", dim("Link:"), accent(inviteURL))
-	openBrowser(inviteURL)
+	_ = openBrowser(inviteURL)
 	fmt.Printf("  %s\n", dim("Browser opened with invite link."))
 	fmt.Println()
 	option("Enter", "I've invited — verify & continue")

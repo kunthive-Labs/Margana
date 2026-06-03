@@ -1,3 +1,7 @@
+// Package discord implements Discord OAuth2 (authorization-code flow with PKCE)
+// over a loopback redirect, plus token refresh and the user/guild lookups Marga
+// needs to identify the signed-in account. Tokens are persisted in the OS
+// keyring by the config package, not here.
 package discord
 
 import (
@@ -190,7 +194,7 @@ func (a *Authenticator) Authenticate(ctx context.Context) (*Session, error) {
 	go func() {
 		_ = server.Serve(ln)
 	}()
-	defer server.Shutdown(context.Background())
+	defer func() { _ = server.Shutdown(context.Background()) }()
 
 	authURL := a.AuthorizationURL(state, codeChallenge)
 	if a.Notify != nil {
@@ -350,7 +354,7 @@ func HasAdminAccess(guild Guild) bool {
 		return true
 	}
 	var perms int64
-	fmt.Sscanf(guild.Permissions, "%d", &perms)
+	_, _ = fmt.Sscanf(guild.Permissions, "%d", &perms)
 	return (perms&permAdministrator) != 0 || (perms&permManageGuild) != 0
 }
 

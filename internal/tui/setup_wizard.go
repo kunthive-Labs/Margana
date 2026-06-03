@@ -101,7 +101,7 @@ func filterAdminGuilds(guilds []setupGuild) []setupGuild {
 			continue
 		}
 		var perms int64
-		fmt.Sscanf(g.Permissions, "%d", &perms)
+		_, _ = fmt.Sscanf(g.Permissions, "%d", &perms)
 		if (perms&setupPermAdmin) != 0 || (perms&setupPermManageGuild) != 0 {
 			filtered = append(filtered, g)
 		}
