@@ -26,6 +26,89 @@ func TestDefaultConfig(t *testing.T) {
 	}
 }
 
+func TestApplyDefaultsSetsLogFormat(t *testing.T) {
+	cfg := &Config{}
+	cfg.ApplyDefaults()
+	if cfg.Logging.Format != "text" {
+		t.Errorf("expected default log format 'text', got '%s'", cfg.Logging.Format)
+	}
+}
+
+func TestLoggingEnvOverrides(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.toml")
+	content := `
+[general]
+username = "anon"
+
+[auth]
+enabled = false
+
+[logging]
+level = "info"
+file = "/from/file.log"
+format = "text"
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+
+	origArgs := os.Args
+	os.Args = []string{"marga", "--config", cfgPath}
+	defer func() { os.Args = origArgs }()
+
+	t.Setenv("MARGA_LOG_LEVEL", "debug")
+	t.Setenv("MARGA_LOG_FILE", "/from/env.log")
+	t.Setenv("MARGA_LOG_FORMAT", "json")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Logging.Level != "debug" {
+		t.Errorf("env should override level: got %q", cfg.Logging.Level)
+	}
+	if cfg.Logging.File != "/from/env.log" {
+		t.Errorf("env should override file: got %q", cfg.Logging.File)
+	}
+	if cfg.Logging.Format != "json" {
+		t.Errorf("env should override format: got %q", cfg.Logging.Format)
+	}
+}
+
+func TestConfigPathFromArgsIgnoresUnknownFlags(t *testing.T) {
+	// Regression: unknown flags (e.g. --setup, --debug) must not break config
+	// path resolution. The old flag.FlagSet parser errored on them.
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--setup"}, ""}, // falls back to default path (non-empty)
+		{[]string{"--config", "/a.toml"}, "/a.toml"},
+		{[]string{"-c", "/b.toml"}, "/b.toml"},
+		{[]string{"--config=/c.toml"}, "/c.toml"},
+		{[]string{"-c=/d.toml"}, "/d.toml"},
+		{[]string{"--debug", "--config", "/e.toml", "--log-file", "/x.log"}, "/e.toml"},
+		{[]string{"--setup", "-s", "--config", "/f.toml"}, "/f.toml"},
+	}
+	for _, tc := range cases {
+		got, err := ConfigPathFromArgs(tc.args)
+		if err != nil {
+			t.Errorf("ConfigPathFromArgs(%v) unexpected error: %v", tc.args, err)
+			continue
+		}
+		if tc.want == "" {
+			if got == "" {
+				t.Errorf("ConfigPathFromArgs(%v) returned empty; expected default path", tc.args)
+			}
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("ConfigPathFromArgs(%v) = %q, want %q", tc.args, got, tc.want)
+		}
+	}
+}
+
 func TestValidateMissingFields(t *testing.T) {
 	cfg := Default()
 	cfg.Server.WebsocketURL = ""

@@ -1,12 +1,16 @@
+// Package config loads and persists Marga's configuration. It layers a TOML
+// config file, MARGA_* environment overrides, and OS-keyring secrets, and
+// resolves the platform-specific paths for config, data, logs, and per-server
+// databases. See docs/CONFIGURATION.md for the full reference.
 package config
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -25,6 +29,7 @@ type Config struct {
 	UI               UIConfig           `toml:"ui"`
 	Github           GithubConfig       `toml:"github"`
 	Notifications    NotificationConfig `toml:"notifications"`
+	Logging          LoggingConfig      `toml:"logging"`
 	ConfiguredGuilds []GuildEntry       `toml:"configured_guilds"`
 	Networks         []NetworkConfig    `toml:"networks"`
 }
@@ -122,6 +127,22 @@ type UIConfig struct {
 	ImageProtocol string `toml:"image_protocol"`
 }
 
+// LoggingConfig controls Marga's diagnostic logging. Logging is disabled unless
+// a destination is set here (File) or on the command line (--debug/--log-file).
+// Because Marga is a full-screen TUI, logs are written to a file, never the
+// terminal. See docs/CONFIGURATION.md and docs/TROUBLESHOOTING.md.
+type LoggingConfig struct {
+	// Level is the minimum severity to record: debug, info, warn, or error.
+	// Defaults to info when a destination is set but no level is given.
+	Level string `toml:"level"`
+	// File is the destination path. Empty disables logging. Relative paths are
+	// resolved against the working directory.
+	File string `toml:"file"`
+	// Format is "text" (human-readable, default) or "json" (one object per
+	// line, for log processors).
+	Format string `toml:"format"`
+}
+
 func Default() *Config {
 	return &Config{
 		General: GeneralConfig{
@@ -165,6 +186,9 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.UI.HistoryLimit <= 0 {
 		c.UI.HistoryLimit = 100
+	}
+	if c.Logging.Format == "" {
+		c.Logging.Format = "text"
 	}
 }
 
@@ -215,6 +239,17 @@ func dataDir() (string, error) {
 	return filepath.Join(home, ".local", "share", "marga"), nil
 }
 
+// DefaultLogPath returns the default diagnostic log destination,
+// <dataDir>/marga.log. It is used when logging is enabled (e.g. via --debug)
+// without an explicit file. The file is only created when logging is active.
+func DefaultLogPath() (string, error) {
+	dir, err := dataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "marga.log"), nil
+}
+
 func GuildDBPath(guildID string) (string, error) {
 	dir, err := dataDir()
 	if err != nil {
@@ -257,19 +292,15 @@ func NetworkStatePath(networkID, name string) (string, error) {
 	return filepath.Join(dir, networkID, name+".json"), nil
 }
 
+// ConfigPathFromArgs returns the config file path, honoring -c/-config (in
+// single- or double-dash, space- or =-separated form) anywhere on the command
+// line. It deliberately ignores every other flag: Load calls this on each
+// startup, so a strict parser here would reject any new CLI flag (this is why
+// `marga --setup` once failed at launch). When no flag is present it falls back
+// to the platform default path.
 func ConfigPathFromArgs(args []string) (string, error) {
-	configPath := ""
-
-	fs := flag.NewFlagSet("marga", flag.ContinueOnError)
-	fs.StringVar(&configPath, "config", "", "path to config file")
-	fs.StringVar(&configPath, "c", "", "path to config file (shorthand)")
-
-	if err := fs.Parse(args); err != nil {
-		return "", fmt.Errorf("parsing CLI flags: %w", err)
-	}
-
-	if configPath != "" {
-		return configPath, nil
+	if p := configPathFlag(args); p != "" {
+		return p, nil
 	}
 
 	defaultPath, err := DefaultConfigPath()
@@ -277,6 +308,34 @@ func ConfigPathFromArgs(args []string) (string, error) {
 		return "", fmt.Errorf("resolving default config path: %w", err)
 	}
 	return defaultPath, nil
+}
+
+// configPathFlag scans args for -c/-config and returns the last value seen, or
+// "" if absent. Unknown flags are skipped rather than rejected.
+func configPathFlag(args []string) string {
+	isKey := func(s string) bool {
+		return s == "-c" || s == "--c" || s == "-config" || s == "--config"
+	}
+	path := ""
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case isKey(a):
+			if i+1 < len(args) {
+				path = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "-c="):
+			path = strings.TrimPrefix(a, "-c=")
+		case strings.HasPrefix(a, "--c="):
+			path = strings.TrimPrefix(a, "--c=")
+		case strings.HasPrefix(a, "-config="):
+			path = strings.TrimPrefix(a, "-config=")
+		case strings.HasPrefix(a, "--config="):
+			path = strings.TrimPrefix(a, "--config=")
+		}
+	}
+	return path
 }
 
 func Load() (*Config, error) {
@@ -409,6 +468,15 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("MARGA_WEB_SETUP_URL"); v != "" {
 		cfg.Server.WebSetupURL = v
+	}
+	if v := os.Getenv("MARGA_LOG_LEVEL"); v != "" {
+		cfg.Logging.Level = v
+	}
+	if v := os.Getenv("MARGA_LOG_FILE"); v != "" {
+		cfg.Logging.File = v
+	}
+	if v := os.Getenv("MARGA_LOG_FORMAT"); v != "" {
+		cfg.Logging.Format = v
 	}
 }
 
