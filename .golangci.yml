@@ -1,0 +1,54 @@
+# golangci-lint configuration for Marga (schema v2).
+# Run locally with: golangci-lint run
+# CI runs the same config via .github/workflows/ci.yml.
+version: "2"
+
+run:
+  # Marga builds with the goolm tag (pure-Go Olm for Matrix E2EE); lint the
+  # same code paths CI builds.
+  build-tags:
+    - goolm
+
+linters:
+  # `standard` = errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - misspell # catches typos in comments and strings
+
+  settings:
+    staticcheck:
+      checks:
+        - all
+        # QF1001 (apply De Morgan's law) is a purely stylistic rewrite. Inverting
+        # boolean conditions in existing code adds risk for no behavioral gain.
+        - -QF1001
+
+  exclusions:
+    # Built-in presets that suppress conventional, well-understood patterns:
+    #   std-error-handling — unchecked errors on Close/Write/Fprint/etc.
+    presets:
+      - std-error-handling
+    rules:
+      # Tests legitimately ignore errors from helpers like os.Setenv, Encode,
+      # and Close; don't fail the build on them.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unused
+      # Pre-existing, unwired code surfaced by `unused`. Most of it is the
+      # inline terminal-image rendering pipeline in tui/image.go: RenderAttachment
+      # currently returns a text placeholder, leaving the iTerm2/Kitty/sixel
+      # renderers and their caches orphaned. The rest are a few spare
+      # layout/style/lang helpers. Left in place for maintainer review rather
+      # than deleted unilaterally (see CHANGELOG and docs/OPERATIONS.md). New
+      # code is still checked by `unused`.
+      - linters:
+          - unused
+        path: internal/tui/image\.go
+      - linters:
+          - unused
+        text: "(goTypes|baseStyle|mentionBadgeStyle|userSidebarWidth|notifSidebarWidth|newViewport|detectLang|extLang|italic)"
+
+formatters:
+  enable:
+    - gofmt
