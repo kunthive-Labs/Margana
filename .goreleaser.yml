@@ -68,8 +68,8 @@ brews:
       name: homebrew-tap
     directory: Formula
     homepage: "https://github.com/kunthive-Labs/Margana"
-    description: "Terminal-native realtime chat client for Discord"
-    license: MIT
+    description: "Terminal-native, multi-network realtime chat client (Discord, Matrix)"
+    license: Apache-2.0
     test: |
       system "#{bin}/marga", "--help"
     install: |
@@ -84,11 +84,10 @@ nfpms:
       {{- .Arch }}
     homepage: https://github.com/kunthive-Labs/Margana
     description: >
-      Terminal-native realtime chat client for Discord.
-      Connects to a relay server over WebSockets with a
-      keyboard-driven TUI, offline SQLite storage, and
-      Discord webhook integration.
-    license: MIT
+      Terminal-native, multi-network realtime chat client. One TUI for
+      Discord (via a relay) and Matrix (direct, with end-to-end encryption),
+      with a keyboard-driven interface and offline SQLite history.
+    license: Apache-2.0
     formats:
       - deb
       - rpm
@@ -106,8 +105,8 @@ scoops:
       owner: kunthive-Labs
       name: scoop-bucket
     homepage: https://github.com/kunthive-Labs/Margana
-    description: "Terminal-native realtime chat client for Discord"
-    license: MIT
+    description: "Terminal-native, multi-network realtime chat client (Discord, Matrix)"
+    license: Apache-2.0
 
 nix:
   - name: marga
@@ -115,13 +114,13 @@ nix:
       owner: kunthive-Labs
       name: nixpkgs
     homepage: https://github.com/kunthive-Labs/Margana
-    description: "Terminal-native realtime chat client for Discord"
-    license: mit
+    description: "Terminal-native, multi-network realtime chat client (Discord, Matrix)"
+    license: asl20
 
 aurs:
   - name: marga-bin
     homepage: "https://github.com/kunthive-Labs/Margana"
-    description: "Terminal-native realtime chat client for Discord"
+    description: "Terminal-native, multi-network realtime chat client (Discord, Matrix)"
     maintainers:
       - "kunthive-Labs <hello@kunthive-Labs.dev>"
     license: "Apache-2.0"
