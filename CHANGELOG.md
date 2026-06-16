@@ -6,6 +6,10 @@ All notable changes to Marga are documented here. The format is based on
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [0.1.0] - 2026-06-16
+
 ### Added
 - **File-based logging.** A new `internal/logging` package (built on `log/slog`)
   provides leveled, structured diagnostics written to a file — never the
@@ -43,6 +47,9 @@ All notable changes to Marga are documented here. The format is based on
 - Test coverage for previously untested packages (model, network types,
   credstore, guilds, discordrelay, setup helpers, matrix media/store).
 - `CONTRIBUTING.md` and `SECURITY.md`.
+- Multi-network foundation: Discord via a relay (WebSocket + webhook) and direct
+  Matrix (mautrix-go) behind one unified `Network` adapter and a single TUI
+  event stream (forked and rebranded from upstream origins).
 
 ### Changed
 - **Builds use the pure-Go `goolm` Olm backend** (`-tags goolm`,
@@ -75,10 +82,5 @@ All notable changes to Marga are documented here. The format is based on
   on disk, pickle key in the OS keyring); encrypted plaintext never leaves the
   client. Device trust is use-on-first-key (no verification UI yet).
 
-## [0.1.0] - Initial
-
-- Terminal-native, multi-network chat client (Marga), forked and rebranded from
-  its upstream origins.
-- Discord support via a relay (WebSocket + webhook) and direct Matrix support
-  (mautrix-go), behind one unified `Network` adapter interface and TUI event
-  stream.
+[Unreleased]: https://github.com/kunthive-Labs/Margana/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/kunthive-Labs/Margana/releases/tag/v0.1.0
