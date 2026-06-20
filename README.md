@@ -170,3 +170,7 @@ To point Marga at your own Discord app, webhook, or relay, see
 ## License
 
 [Apache License 2.0](LICENSE)
+
+---
+
+Part of [kunthive-Labs](https://github.com/kunthive-Labs) — open experiments in AI & tooling.
