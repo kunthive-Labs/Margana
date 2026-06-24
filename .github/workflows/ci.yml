@@ -17,7 +17,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -46,7 +46,7 @@ jobs:
     name: gofmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -67,7 +67,7 @@ jobs:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -90,7 +90,7 @@ jobs:
     name: race detector
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -109,7 +109,7 @@ jobs:
     name: govulncheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Use the latest stable Go so the scan runs against a security-patched
       # standard library; govulncheck only fails on vulnerabilities the code
