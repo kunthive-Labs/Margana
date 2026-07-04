@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marga — terminal-native, multi-network realtime chat</title>
+<meta name="description" content="Marga is a terminal-native, multi-network realtime chat TUI. One terminal client for Discord and Matrix (E2EE) — a unified event stream, live Bubble Tea UI, and SQLite FTS5 search.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Marga — terminal-native, multi-network realtime chat">
+<meta property="og:description" content="One TUI for several chat networks — Discord via relay, Matrix direct with end-to-end encryption. Built in Go with Bubble Tea and local SQLite full-text search.">
+<meta property="og:url" content="https://kunthive-labs.github.io/Margana/">
+<meta name="theme-color" content="#05080a">
+<style>
+  :root{
+    --bg:#05080a;
+    --bg-2:#0a1014;
+    --panel:#0b1216;
+    --panel-2:#0e171c;
+    --border:#16242b;
+    --border-2:#1d3138;
+    --text:#cfe8e3;
+    --muted:#7e9a97;
+    --dim:#56716e;
+    --accent:#33ff99;
+    --accent-2:#22d3ee;
+    --accent-soft:rgba(51,255,153,.12);
+    --red:#ff5f56;
+    --yellow:#ffbd2e;
+    --green-dot:#27c93f;
+    --mono: ui-monospace, "SF Mono", "Menlo", "Consolas", "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, "Helvetica Neue", Arial, sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  .mono{font-family:var(--mono)}
+  .accent{color:var(--accent)}
+
+  /* decorative background */
+  .bg-fx{position:fixed;inset:0;z-index:-1;pointer-events:none}
+  .bg-fx::before{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(820px 520px at 78% -8%, rgba(51,255,153,.10), transparent 60%),
+      radial-gradient(680px 480px at 10% 4%, rgba(34,211,238,.08), transparent 55%);
+  }
+  .bg-fx::after{
+    content:"";position:absolute;inset:0;
+    background-image:
+      linear-gradient(rgba(40,90,80,.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(40,90,80,.045) 1px, transparent 1px);
+    background-size:48px 48px;
+    -webkit-mask-image:radial-gradient(900px 600px at 50% 0%, #000 30%, transparent 78%);
+            mask-image:radial-gradient(900px 600px at 50% 0%, #000 30%, transparent 78%);
+  }
+
+  /* header */
+  header{position:sticky;top:0;z-index:50;backdrop-filter:blur(10px);
+    background:rgba(5,8,10,.72);border-bottom:1px solid var(--border)}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-weight:600;letter-spacing:.2px}
+  .brand .glyph{color:var(--accent);font-size:18px}
+  .brand .lab{font-size:11px;color:var(--dim);border:1px solid var(--border-2);
+    padding:2px 8px;border-radius:999px;letter-spacing:.4px}
+  .lab:hover{color:var(--accent);border-color:var(--accent)}
+  .nav-links{display:flex;align-items:center;gap:26px;font-size:14px}
+  .nav-links a{color:var(--muted);transition:color .18s}
+  .nav-links a:hover{color:var(--accent)}
+  .nav-cta{border:1px solid var(--border-2);padding:7px 14px;border-radius:8px;color:var(--text)!important}
+  .nav-cta:hover{border-color:var(--accent);color:var(--accent)!important}
+  @media(max-width:760px){.nav-links .hide-sm{display:none}}
+
+  /* hero */
+  .hero{padding:84px 0 64px;text-align:center}
+  .badge{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12.5px;
+    color:var(--muted);border:1px solid var(--border-2);background:var(--panel);
+    padding:6px 13px;border-radius:999px;margin-bottom:26px}
+  .badge .blink{width:7px;height:7px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 8px var(--accent);animation:blink 1.7s steps(1) infinite}
+  @keyframes blink{50%{opacity:.25}}
+  h1{font-family:var(--mono);font-size:clamp(2.3rem,6vw,4rem);line-height:1.05;
+    letter-spacing:-1px;font-weight:700;color:#eafff6}
+  h1 .accent{text-shadow:0 0 24px rgba(51,255,153,.35)}
+  .tagline{font-size:clamp(1.05rem,2.4vw,1.35rem);color:var(--text);margin-top:20px;font-weight:500}
+  .sub{max-width:660px;margin:16px auto 0;color:var(--muted);font-size:1.02rem}
+  .cta-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:34px}
+  .btn{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:14.5px;
+    padding:13px 22px;border-radius:10px;font-weight:600;transition:transform .15s,box-shadow .2s,border-color .2s}
+  .btn:hover{transform:translateY(-2px)}
+  .btn-primary{background:var(--accent);color:#04130c;box-shadow:0 0 0 1px rgba(51,255,153,.5),0 8px 30px -8px rgba(51,255,153,.55)}
+  .btn-primary:hover{box-shadow:0 0 0 1px var(--accent),0 12px 38px -8px rgba(51,255,153,.7)}
+  .btn-ghost{border:1px solid var(--border-2);color:var(--text);background:var(--panel)}
+  .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* terminal window */
+  .term{max-width:760px;margin:54px auto 0;border:1px solid var(--border-2);border-radius:12px;
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));overflow:hidden;
+    box-shadow:0 30px 80px -30px rgba(0,0,0,.8),0 0 0 1px rgba(51,255,153,.05);text-align:left}
+  .term-bar{display:flex;align-items:center;gap:8px;padding:11px 14px;
+    background:#0a1418;border-bottom:1px solid var(--border)}
+  .dot{width:12px;height:12px;border-radius:50%}
+  .dot.r{background:var(--red)}.dot.y{background:var(--yellow)}.dot.g{background:var(--green-dot)}
+  .term-title{margin-left:10px;font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .term-body{font-family:var(--mono);font-size:13.5px;padding:20px;line-height:1.85;color:var(--text);
+    overflow-x:auto}
+  .term-body .pr{color:var(--accent)}
+  .term-body .cm{color:var(--dim)}
+  .term-body .net{color:var(--accent-2)}
+  .term-body .you{color:#eafff6}
+  .term-body .ok{color:var(--accent)}
+  .cursor{display:inline-block;width:8px;height:15px;background:var(--accent);
+    vertical-align:-2px;margin-left:3px;animation:blink 1.1s steps(1) infinite}
+
+  /* sections */
+  section{padding:78px 0}
+  .eyebrow{font-family:var(--mono);font-size:12.5px;color:var(--accent);letter-spacing:1.5px;
+    text-transform:uppercase;margin-bottom:14px}
+  h2{font-size:clamp(1.7rem,3.6vw,2.4rem);letter-spacing:-.5px;color:#eafff6;line-height:1.15;font-weight:700}
+  .lead{color:var(--muted);font-size:1.06rem;max-width:680px;margin-top:18px}
+  .lead + .lead{margin-top:14px}
+
+  /* feature grid */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:44px}
+  @media(max-width:860px){.grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  .card{border:1px solid var(--border);background:var(--panel);border-radius:14px;padding:24px;
+    transition:border-color .22s,transform .22s,background .22s}
+  .card:hover{border-color:var(--border-2);transform:translateY(-3px);background:var(--panel-2)}
+  .ico{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    background:var(--accent-soft);border:1px solid rgba(51,255,153,.22);margin-bottom:16px}
+  .ico svg{width:20px;height:20px;stroke:var(--accent);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .card h3{font-size:1.06rem;color:#eafff6;margin-bottom:8px;font-family:var(--mono);font-weight:600}
+  .card p{color:var(--muted);font-size:.95rem}
+
+  /* how it works */
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:44px}
+  @media(max-width:780px){.flow{grid-template-columns:1fr 1fr}}
+  @media(max-width:480px){.flow{grid-template-columns:1fr}}
+  .step{position:relative;border:1px solid var(--border);background:var(--panel);border-radius:14px;padding:22px}
+  .step .n{font-family:var(--mono);font-size:12px;color:var(--accent);border:1px solid rgba(51,255,153,.3);
+    width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+  .step h4{font-size:.98rem;color:#eafff6;margin-bottom:7px;font-family:var(--mono);font-weight:600}
+  .step p{color:var(--muted);font-size:.9rem}
+
+  /* tech stack */
+  .pills{display:flex;flex-wrap:wrap;gap:10px;margin-top:36px}
+  .pill{font-family:var(--mono);font-size:13px;color:var(--text);border:1px solid var(--border-2);
+    background:var(--panel);padding:9px 15px;border-radius:999px;transition:border-color .2s,color .2s}
+  .pill:hover{border-color:var(--accent);color:var(--accent)}
+  .pill b{color:var(--accent);font-weight:600}
+
+  /* quickstart */
+  .qs-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:40px}
+  @media(max-width:760px){.qs-grid{grid-template-columns:1fr}}
+  .codeblock{border:1px solid var(--border-2);border-radius:12px;background:#070d10;overflow:hidden}
+  .code-head{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#0a1418;border-bottom:1px solid var(--border);
+    font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+  .code-head .d{width:10px;height:10px;border-radius:50%}
+  pre{font-family:var(--mono);font-size:13px;padding:18px;overflow-x:auto;line-height:1.8;color:var(--text)}
+  pre .pr{color:var(--accent)}
+  pre .cm{color:var(--dim)}
+  .note{margin-top:22px;color:var(--dim);font-size:.9rem;font-family:var(--mono)}
+  .note code{color:var(--accent-2)}
+
+  /* open source CTA */
+  .os{border:1px solid var(--border-2);border-radius:18px;text-align:center;padding:56px 28px;
+    background:
+      radial-gradient(600px 300px at 50% -20%, rgba(51,255,153,.12), transparent 70%),
+      var(--panel)}
+  .os h2{margin-bottom:14px}
+  .os p{color:var(--muted);max-width:560px;margin:0 auto 28px}
+  .os-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+
+  /* footer */
+  footer{border-top:1px solid var(--border);padding:40px 0 56px;margin-top:30px}
+  .foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px}
+  .foot .left{color:var(--dim);font-size:.9rem}
+  .foot .left a{color:var(--muted)}
+  .foot .left a:hover{color:var(--accent)}
+  .foot .links{display:flex;gap:22px;font-family:var(--mono);font-size:13px}
+  .foot .links a{color:var(--muted)}
+  .foot .links a:hover{color:var(--accent)}
+
+  /* reveal */
+  .reveal{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
+  .reveal.in{opacity:1;transform:none}
+  @media(prefers-reduced-motion:reduce){
+    .reveal{opacity:1;transform:none;transition:none}
+    .blink,.cursor{animation:none}
+    html{scroll-behavior:auto}
+  }
+</style>
+</head>
+<body>
+<div class="bg-fx" aria-hidden="true"></div>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top">
+      <span class="glyph mono">▌</span>
+      <span>marga</span>
+      <a class="lab" href="https://github.com/kunthive-Labs" target="_blank" rel="noopener">kunthive-Labs</a>
+    </a>
+    <nav class="nav-links">
+      <a class="hide-sm" href="#what">What</a>
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#how">How it works</a>
+      <a class="hide-sm" href="#quickstart">Quickstart</a>
+      <a class="nav-cta" href="https://github.com/kunthive-Labs/Margana" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap">
+      <span class="badge"><span class="blink"></span> terminal-native · multi-network · realtime</span>
+      <h1>One terminal.<br>Every <span class="accent">chat network.</span></h1>
+      <p class="tagline">A terminal-native, multi-network realtime chat TUI.</p>
+      <p class="sub">Marga puts Discord and Matrix into a single Bubble Tea terminal client — one unified event stream, live in your shell, with end-to-end-encrypted Matrix rooms and local full-text search. Built for humans and agents who live in the terminal.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/kunthive-Labs/Margana" target="_blank" rel="noopener">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.7.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.4-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 5 18.3 5.3 18.3 5.3c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .4.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>
+          View on GitHub
+        </a>
+        <a class="btn btn-ghost" href="#quickstart">▶ Quickstart</a>
+      </div>
+
+      <!-- terminal window -->
+      <div class="term reveal">
+        <div class="term-bar">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="term-title">marga — ~/.config/marga</span>
+        </div>
+        <div class="term-body">
+<span class="cm">$</span> <span class="pr">marga</span>
+<span class="cm">▌ the terminal-native multi-network chat experience  v0.1.0</span>
+
+<span class="net">[matrix]</span>  connected · <span class="ok">e2ee on</span> · 4 spaces
+<span class="net">[discord]</span> connected via relay · 11 channels
+
+<span class="net">#general</span>
+  <span class="you">@anon</span>      ship it 🚀
+  <span class="you">@k</span>          ✅ FTS5 search merged
+<span class="cm">/search</span> deploy  → 12 hits across networks
+<span class="cm">›</span> <span class="cursor"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHAT -->
+  <section id="what">
+    <div class="wrap reveal">
+      <p class="eyebrow">What it is</p>
+      <h2>Several chat networks, one event stream.</h2>
+      <p class="lead">Marga is a single full-screen TUI that talks to multiple chat networks at once. Each network plugs in behind a common <span class="mono accent">Network</span> adapter, so the interface consumes one unified, fan-in event stream and never sees protocol-specific wire formats. Switch networks with a keystroke; everything looks and feels the same.</p>
+      <p class="lead">Today it speaks <strong>Discord</strong> — through a server-side relay bot, so your account stays ToS-compliant — and <strong>Matrix</strong> — connected directly to your homeserver, with encrypted rooms decrypted transparently and joined spaces surfaced as switchable servers. The adapter model is pluggable, so more networks can follow.</p>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="wrap">
+      <div class="reveal">
+        <p class="eyebrow">Features</p>
+        <h2>Built for people who live in the terminal.</h2>
+      </div>
+      <div class="grid">
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+          <h3>One TUI, many networks</h3>
+          <p>A unified Bubble Tea interface over a fan-in <span class="mono">Events()</span> stream. The UI never touches network-specific wire formats — switch with <span class="mono">Ctrl+T</span>.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+          <h3>Matrix, end-to-end encrypted</h3>
+          <p>Connects straight to your homeserver via mautrix-go. Olm/Megolm E2EE rooms are decrypted and encrypted transparently; keys live locally, the token in your OS keyring.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+          <h3>Discord without self-botting</h3>
+          <p>Discord forbids driving a user account against its gateway. Marga connects through a server-side bot + webhook relay instead, so your account stays ToS-compliant.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></div>
+          <h3>Local full-text search</h3>
+          <p>Message history is persisted to SQLite with an FTS5 full-text index. <span class="mono">/search</span> runs prefix-matched queries over everything you've seen — offline.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4"/></svg></div>
+          <h3>Pluggable adapters</h3>
+          <p>Every network implements one <span class="mono">Network</span> interface. Add a new backend without touching the TUI — the event bus and UI stay network-neutral.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg></div>
+          <h3>Keyboard-first &amp; agent-ready</h3>
+          <p>Slash commands, completion for <span class="mono">@user</span> / <span class="mono">#channel</span>, and rich shortcuts. Headless-friendly env-var auth makes it usable by agents and CI, not just humans.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how">
+    <div class="wrap">
+      <div class="reveal">
+        <p class="eyebrow">How it works</p>
+        <h2>Adapters fan in. The TUI reads one stream.</h2>
+      </div>
+      <div class="flow">
+        <div class="step reveal">
+          <div class="n">1</div>
+          <h4>Network adapters</h4>
+          <p>Discord (relay + websocket) and Matrix (direct, mautrix) each implement the common <span class="mono">Network</span> interface.</p>
+        </div>
+        <div class="step reveal">
+          <div class="n">2</div>
+          <h4>Unified event bus</h4>
+          <p>Every adapter emits onto a single fan-in <span class="mono">Events()</span> channel — one normalized stream, no wire formats leaking out.</p>
+        </div>
+        <div class="step reveal">
+          <div class="n">3</div>
+          <h4>Live Bubble Tea TUI</h4>
+          <p>The terminal UI consumes that stream and renders channels, messages, users and networks in real time.</p>
+        </div>
+        <div class="step reveal">
+          <div class="n">4</div>
+          <h4>SQLite + FTS5</h4>
+          <p>Messages persist to a local SQLite store with a full-text index, so history and <span class="mono">/search</span> work offline.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TECH STACK -->
+  <section id="stack">
+    <div class="wrap reveal">
+      <p class="eyebrow">Tech stack</p>
+      <h2>Pure Go, no C toolchain required.</h2>
+      <p class="lead">The <span class="mono accent">goolm</span> build tag selects mautrix's pure-Go Olm backend for Matrix E2EE, so no system <span class="mono">libolm</span> or CGo is needed. SQLite is the CGo-free <span class="mono">modernc.org/sqlite</span> driver.</p>
+      <div class="pills">
+        <span class="pill"><b>Go</b> 1.25+</span>
+        <span class="pill"><b>Bubble Tea</b> TUI</span>
+        <span class="pill"><b>Lip Gloss</b> styling</span>
+        <span class="pill"><b>mautrix-go</b> Matrix + E2EE</span>
+        <span class="pill"><b>gorilla/websocket</b> Discord relay</span>
+        <span class="pill"><b>modernc.org/sqlite</b> + FTS5</span>
+        <span class="pill"><b>go-keyring</b> secret storage</span>
+        <span class="pill"><b>zerolog</b> logging</span>
+        <span class="pill"><b>BurntSushi/toml</b> config</span>
+        <span class="pill"><b>Apache-2.0</b> license</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUICKSTART -->
+  <section id="quickstart">
+    <div class="wrap">
+      <div class="reveal">
+        <p class="eyebrow">Get started</p>
+        <h2>Build from source, run in seconds.</h2>
+        <p class="lead">Marga is built from source and needs <span class="mono accent">Go 1.25+</span>. First run launches an interactive setup wizard.</p>
+      </div>
+      <div class="qs-grid">
+        <div class="codeblock reveal">
+          <div class="code-head"><span class="d" style="background:var(--red)"></span><span class="d" style="background:var(--yellow)"></span><span class="d" style="background:var(--green-dot)"></span> &nbsp;clone &amp; build</div>
+<pre><span class="cm"># clone and build the binary</span>
+<span class="pr">git</span> clone https://github.com/kunthive-Labs/Margana.git
+<span class="pr">cd</span> Margana
+<span class="pr">make</span> build          <span class="cm"># → bin/marga (sets -tags goolm)</span>
+<span class="pr">./bin/marga</span></pre>
+        </div>
+        <div class="codeblock reveal">
+          <div class="code-head"><span class="d" style="background:var(--red)"></span><span class="d" style="background:var(--yellow)"></span><span class="d" style="background:var(--green-dot)"></span> &nbsp;install with Go</div>
+<pre><span class="cm"># install the binary directly</span>
+<span class="pr">go</span> install -tags goolm \
+  github.com/kunthive-Labs/Margana/cmd/marga@latest
+
+<span class="cm"># then launch the setup wizard</span>
+<span class="pr">marga</span></pre>
+        </div>
+      </div>
+      <p class="note">Matrix needs no relay — add a <code>[[networks]]</code> block with your homeserver and user id, and Marga prompts for your password (stored in the keyring). Discord uses placeholder relay endpoints by default — stand up your own. See <code>docs/SELF_HOSTING.md</code>.</p>
+    </div>
+  </section>
+
+  <!-- OPEN SOURCE CTA -->
+  <section>
+    <div class="wrap reveal">
+      <div class="os">
+        <p class="eyebrow">Open source</p>
+        <h2>It's open source — and Apache-2.0.</h2>
+        <p>Marga is an open experiment from kunthive-Labs. Star it, fork it, add a network adapter, or open a PR. Contributions and new backends are welcome.</p>
+        <div class="os-row">
+          <a class="btn btn-primary" href="https://github.com/kunthive-Labs/Margana" target="_blank" rel="noopener">★ Star on GitHub</a>
+          <a class="btn btn-ghost" href="https://github.com/kunthive-Labs/Margana/fork" target="_blank" rel="noopener">⑂ Fork the repo</a>
+          <a class="btn btn-ghost" href="https://github.com/kunthive-Labs/Margana/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contribute ↗</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div class="left">
+      Part of <a href="https://github.com/kunthive-Labs" target="_blank" rel="noopener">kunthive-Labs</a> — open experiments in AI &amp; tooling. © <span id="yr">2026</span>
+    </div>
+    <div class="links">
+      <a href="https://github.com/kunthive-Labs/Margana" target="_blank" rel="noopener">Repository</a>
+      <a href="https://labs.kunthive.in" target="_blank" rel="noopener">labs.kunthive.in</a>
+      <a href="https://github.com/kunthive-Labs/Margana/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  (function(){
+    var els = document.querySelectorAll('.reveal');
+    if(!('IntersectionObserver' in window)){els.forEach(function(e){e.classList.add('in')});return;}
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){en.target.classList.add('in');io.unobserve(en.target);}
+      });
+    },{threshold:.12,rootMargin:'0px 0px -8% 0px'});
+    els.forEach(function(e){io.observe(e);});
+  })();
+</script>
+</body>
+</html>
