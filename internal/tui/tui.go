@@ -312,7 +312,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				notif := model.Notification{
 					Channel:   "system",
 					Username:  "update-available",
-					Content:   fmt.Sprintf("Margana %s is available (you have v%s). run your package manager to update.", msg.latestVersion, local),
+					Content:   fmt.Sprintf("Marga %s is available (you have v%s). run your package manager to update.", msg.latestVersion, local),
 					Timestamp: time.Now(),
 				}
 				if m.store != nil {
