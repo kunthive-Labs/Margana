@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="Marga" width="120">
+  <img src="logo.png" alt="Marga" width="160">
 </p>
 
 # Marga
