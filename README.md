@@ -8,6 +8,10 @@ Terminal-native, multi-network realtime chat. One TUI for several chat
 networks — Discord (through a relay bot) and Matrix (connected directly) today,
 with a pluggable adapter model for more.
 
+> **Pre-1.0 software** (`v0.1.0`). Marga is usable day to day, but config keys,
+> keybindings, and the relay contract may still change between releases until
+> 1.0 — pin a version if you need stability.
+
 ## Networks
 
 Marga talks to each network through a `Network` adapter (`internal/network`);
