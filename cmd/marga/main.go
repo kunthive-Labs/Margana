@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -32,6 +33,26 @@ import (
 )
 
 var version = "dev"
+
+// resolveVersion returns the version string to display. It prefers the value
+// stamped at build time via -ldflags "-X main.version=..." (goreleaser and
+// `make build` both set it). When that is absent — most notably for
+// `go install github.com/kunthive-Labs/Margana/cmd/marga@latest`, where the Go
+// toolchain records the module version in the build info but does not set
+// main.version — it falls back to the module version from the build info. The
+// leading "v" is trimmed so output matches goreleaser's convention (0.1.0, not
+// v0.1.0), and a plain `go build` of the source tree keeps reporting "dev".
+func resolveVersion() string {
+	if version != "dev" && version != "" {
+		return strings.TrimPrefix(version, "v")
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		if v := bi.Main.Version; v != "" && v != "(devel)" {
+			return strings.TrimPrefix(v, "v")
+		}
+	}
+	return version
+}
 
 // ANSI helpers
 const (
@@ -170,6 +191,7 @@ func readLineWithSignal(ctx context.Context, reader *bufio.Reader) (string, erro
 
 func main() {
 	_ = godotenv.Load()
+	version = resolveVersion()
 
 	flags, err := parseFlags(os.Args[1:])
 	if err != nil {
