@@ -1,5 +1,11 @@
 version: 2
 
+# The GitHub repository is "Margana" (the marketing/brand name, see
+# release.github below), but the shipped tool, binary, and every package are
+# "marga". Set project_name explicitly so templated archive names use "marga"
+# instead of defaulting to the repo name.
+project_name: marga
+
 before:
   hooks:
     - go mod tidy
