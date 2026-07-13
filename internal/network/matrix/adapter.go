@@ -218,7 +218,7 @@ func (a *Adapter) login(ctx context.Context, client *mautrix.Client) error {
 		Type:                     mautrix.AuthTypePassword,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: localpart(a.userID)},
 		Password:                 a.password,
-		InitialDeviceDisplayName: "Margana",
+		InitialDeviceDisplayName: "Marga",
 		StoreCredentials:         true,
 	})
 	a.password = "" // do not keep the plaintext password in memory after use
