@@ -41,6 +41,7 @@ archives:
       - config.example.toml
       - README.md
       - LICENSE
+      - logo.png
 
 checksum:
   name_template: "checksums.txt"
