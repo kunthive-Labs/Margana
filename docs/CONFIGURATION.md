@@ -107,6 +107,7 @@ Optional GitHub activity sidebar, refreshed every 60s when `repo` is set.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `bell_on_mention` | bool | `false` | Ring the terminal bell on `@`-mention in a non-muted channel. |
+| `desktop` | bool | `false` | Show an OS desktop notification on a mention when Marga is unfocused (or the mention is in another channel). Env override: `MARGA_NOTIFY_DESKTOP`. |
 | `muted_channels` | []string | `[]` | Channel names (case-insensitive) for which mentions and the bell are suppressed. |
 
 ### `[logging]`
@@ -173,6 +174,7 @@ read from a `.env` file in the working directory (see [`.env.example`](../.env.e
 | `MARGA_THEME` | `ui.theme` | |
 | `MARGA_HISTORY_LIMIT` | `ui.history_limit` | Must parse as a positive int. |
 | `MARGA_IMAGE_PROTOCOL` | `ui.image_protocol` | |
+| `MARGA_NOTIFY_DESKTOP` | `notifications.desktop` | `true`/`false`. |
 | `MARGA_GITHUB_TOKEN` | `github.token` | |
 | `MARGA_GITHUB_REPO` | `github.repo` | |
 | `MARGA_LOG_LEVEL` | `logging.level` | |

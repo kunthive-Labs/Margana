@@ -72,6 +72,9 @@ type NotificationConfig struct {
 	// BellOnMention emits the terminal bell when you are @-mentioned in a
 	// channel that isn't muted.
 	BellOnMention bool `toml:"bell_on_mention"`
+	// Desktop shows an OS desktop notification on a mention when Marga is
+	// unfocused (or the mention is in another channel). Off by default.
+	Desktop bool `toml:"desktop"`
 	// MutedChannels suppresses mention notifications (and the bell) for the
 	// listed channel names. Case-insensitive.
 	MutedChannels []string `toml:"muted_channels"`
@@ -456,6 +459,11 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("MARGA_IMAGE_PROTOCOL"); v != "" {
 		cfg.UI.ImageProtocol = v
+	}
+	if v := os.Getenv("MARGA_NOTIFY_DESKTOP"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.Notifications.Desktop = b
+		}
 	}
 	if v := os.Getenv("MARGA_GITHUB_TOKEN"); v != "" {
 		cfg.Github.Token = v

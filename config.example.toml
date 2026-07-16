@@ -132,6 +132,10 @@ repo = ""
 # Ring the terminal bell when you are @-mentioned (in a non-muted channel).
 bell_on_mention = false
 
+# Show an OS desktop notification on a mention when Marga is unfocused (or the
+# mention is in another channel). Env override: MARGA_NOTIFY_DESKTOP.
+desktop = false
+
 # Channels for which mention notifications (and the bell) are suppressed.
 # Case-insensitive. Example: muted_channels = ["bots", "ci-spam"]
 muted_channels = []
