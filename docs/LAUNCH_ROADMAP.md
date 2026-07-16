@@ -105,7 +105,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   connection state and next-retry are always visible; no blank/ambiguous states
   on common paths.
 
-### Phase 4 — Terminal-native polish  ☐
+### Phase 4 — Terminal-native polish  ☑
 - **Goal:** Looks and feels right in *any* terminal, and is accessible.
 - **Items:** H1 (respect terminal bg + `NO_COLOR`), H2 (config-driven themes),
   H6 (accessibility pass).
@@ -269,7 +269,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 ## 4. High-impact improvements
 
 ### H1 · Respect terminal background + honor `NO_COLOR`
-- **Status:** ☐  ·  **Priority:** P1  ·  **Complexity:** Low–Med  ·  **Phase:** 4
+- **Status:** ☑  ·  **Priority:** P1  ·  **Complexity:** Low–Med  ·  **Phase:** 4
 - **Why:** Default theme hardcodes `themeBg = #000000` (`internal/tui/styles.go`),
   which fights transparent terminals and breaks on light backgrounds. The
   riced-terminal crowd is your best evangelist base and hates palette overrides.
@@ -281,7 +281,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   terminals are readable; `NO_COLOR` disables color.
 
 ### H2 · Config-driven / custom themes
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Med  ·  **Phase:** 4
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Med  ·  **Phase:** 4
 - **Why:** Themes are hardcoded in Go (`default`, `dracula`, `solarized`).
   Personalization drives attachment and "here's my setup" screenshots → sharing.
 - **Work:** load palettes from config (e.g. `[theme.<name>]` blocks or a themes
@@ -318,7 +318,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** no blank/ambiguous states remain on the common paths.
 
 ### H6 · Accessibility pass
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Med  ·  **Phase:** 4
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Med  ·  **Phase:** 4
 - **Why:** Status is encoded by color alone; contrast varies by theme; broadens
   reach and signals craft.
 - **Work:** add glyphs/text alongside color for status, verify contrast across
@@ -406,6 +406,10 @@ web surface and a different audience. Do not reintroduce these here:
 | 2026-07-16 | 3 | H4 (connection affordances) | ☑ | Plumbed reconnect timing: `wsclient.StatusChange.RetryIn` → `network.Event.RetryAt` → model `reconnectAt` + 1s `reconnectTickCmd`. Status bar glyph+color-coded with live "reconnecting in Ns" countdown; explicit full-width offline banner with relay/SELF_HOSTING hint. |
 | 2026-07-16 | 3 | H5 (empty/error states) | ☑ | Actionable, status-aware chat empty state; offline banner carries the actionable connect/relay hint. |
 | 2026-07-16 | 3 | Phase 3 | ☑ | Reliability & retention complete. `go build`/`vet`/`test -tags goolm` green (16 pkgs); added tui reliability tests + wsclient RetryIn test. Not committed. |
+| 2026-07-16 | 4 | H1 (terminal bg + NO_COLOR) | ☑ | Palette vars retyped to `lipgloss.TerminalColor`; new `none`/`terminal` theme uses `NoColor{}` bg/fg (inherits terminal) + ANSI-index accents. `NO_COLOR` strips all color (bold/italic kept). Verified via a custom-theme + NO_COLOR binary run. |
+| 2026-07-16 | 4 | H2 (config-driven themes) | ☑ | `Theme` struct + `builtinThemes`/`customThemes`; `[themes.<name>]` blocks (`config.ThemeColors`) load via `tui.RegisterCustomThemes` with per-field fallback to default. Documented in CONFIGURATION.md + config.example.toml. |
+| 2026-07-16 | 4 | H6 (accessibility) | ☑ | Connection state glyphs+words (from H4) read without color; errors-modal selection uses a `>` marker + bold; NO_COLOR honored; accessibility section added to docs. |
+| 2026-07-16 | 4 | Phase 4 | ☑ | Terminal-native polish complete. `go build`/`vet`/`test -tags goolm` green (16 pkgs); added none/custom-theme/NO_COLOR tests. Not committed. |
 
 ---
 
