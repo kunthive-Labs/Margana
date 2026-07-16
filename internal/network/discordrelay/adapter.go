@@ -197,7 +197,11 @@ func (a *Adapter) fanIn(ctx context.Context) {
 			pr := p
 			a.emit(ctx, network.Event{Network: ID, Kind: network.EventPresence, Presence: &pr})
 		case sc := <-a.ws.StatusChanges():
-			a.emit(ctx, network.Event{Network: ID, Kind: network.EventStatus, State: network.ConnState(sc.Status), Err: sc.Err})
+			var retryAt time.Time
+			if sc.RetryIn > 0 {
+				retryAt = time.Now().Add(sc.RetryIn)
+			}
+			a.emit(ctx, network.Event{Network: ID, Kind: network.EventStatus, State: network.ConnState(sc.Status), Err: sc.Err, RetryAt: retryAt})
 		case u := <-a.ws.TerminalUsers():
 			a.emit(ctx, network.Event{Network: ID, Kind: network.EventPresentUsers, Users: u})
 		}
