@@ -86,6 +86,24 @@ func (m Model) View() string {
 		return centerInTerm(m.renderSetupWizard(modalW, modalH), modalW, modalH, m.width, m.height)
 	}
 
+	if m.coachVisible {
+		modalW := m.width * 70 / 100
+		if modalW < 50 {
+			modalW = 50
+		}
+		if modalW > m.width-6 {
+			modalW = m.width - 6
+		}
+		modalH := m.height * 45 / 100
+		if modalH < 12 {
+			modalH = 12
+		}
+		if modalH > m.height-4 {
+			modalH = m.height - 4
+		}
+		return centerInTerm(m.renderCoachModal(modalW, modalH), modalW, modalH, m.width, m.height)
+	}
+
 	statusBar := fitToSize(m.renderStatusBar(), m.width, 1)
 	contentHeight := m.height - 1
 
@@ -518,6 +536,26 @@ func (m Model) renderHelpModal(width, height int) string {
 	boxContent := hintLine + "\n" + content
 	box := renderBorderedBox(panelStyle(), width, height, boxContent)
 
+	return title + "\n" + box
+}
+
+// renderCoachModal is the one-time first-run overlay. It mirrors the help modal's
+// styling and lists the handful of keys a new user needs to get moving. It is
+// gated by Model.coachVisible and dismissed by any key (see handleKey).
+func (m Model) renderCoachModal(width, height int) string {
+	title := panelTitleStyle().Render(" Welcome to Marga ")
+	hint := lipgloss.NewStyle().Foreground(themeDim).Render("press any key to dismiss")
+	intro := lipgloss.NewStyle().Foreground(themeFg).Render("You're connected. Here's how to get around:")
+
+	body := m.helpSection("Get started", width-4, [][2]string{
+		{"enter", "Send a message"},
+		{"ctrl + b", "Toggle the channels sidebar"},
+		{"ctrl + h", "Full help & keybindings"},
+		{"/", "Slash commands — /join, /network, /search"},
+	})
+
+	boxContent := hint + "\n\n" + intro + "\n\n" + body
+	box := renderBorderedBox(panelStyle(), width, height, boxContent)
 	return title + "\n" + box
 }
 

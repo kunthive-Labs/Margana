@@ -125,6 +125,9 @@ type UIConfig struct {
 	Theme         string `toml:"theme"`
 	HistoryLimit  int    `toml:"history_limit"`
 	ImageProtocol string `toml:"image_protocol"`
+	// CoachShown records that the first-run coach overlay has been dismissed, so
+	// it is shown exactly once. Persisted by the TUI on first dismissal.
+	CoachShown bool `toml:"coach_shown"`
 }
 
 // LoggingConfig controls Marga's diagnostic logging. Logging is disabled unless

@@ -134,6 +134,7 @@ type Model struct {
 	errorScrollOff int
 
 	helpVisible      bool
+	coachVisible     bool
 	configuredGuilds []config.GuildEntry
 
 	setupStep          setupStep
@@ -201,6 +202,7 @@ func New(adapters []network.Network, active network.NetworkID, store *db.Store, 
 		presences:          make(map[string]model.UserPresence),
 		log:                log.New(io.Discard, "", 0),
 		version:            version,
+		coachVisible:       setupCfg != nil && !setupCfg.UI.CoachShown,
 	}
 }
 
@@ -703,6 +705,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// The first-run coach overlay swallows the next keypress to dismiss itself,
+	// then persists that it has been shown so it never reappears.
+	if m.coachVisible {
+		m.coachVisible = false
+		if m.setupCfg != nil && m.setupConfigPath != "" {
+			m.setupCfg.UI.CoachShown = true
+			cfg, path := m.setupCfg, m.setupConfigPath
+			return m, func() tea.Msg { _ = cfg.Save(path); return nil }
+		}
+		return m, nil
+	}
 	if m.isSetupVisible() {
 		return m.handleSetupKey(msg)
 	}
