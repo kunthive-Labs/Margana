@@ -1,0 +1,47 @@
+name: Demo GIF
+
+# Regenerates assets/demo.gif from docs/demo.tape using Marga's offline demo
+# mode. Manual for now (workflow_dispatch): once assets/demo.gif is the accepted
+# canonical recording, add a `release: {types: [published]}` trigger so each
+# release refreshes it. Kept manual until then so a release never overwrites a
+# hand-tuned GIF with an unattended render.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build marga
+        run: make build
+        env:
+          CGO_ENABLED: "0"
+
+      - name: Render demo GIF
+        uses: charmbracelet/vhs-action@v2
+        with:
+          path: docs/demo.tape
+
+      - name: Commit regenerated GIF
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add assets/demo.gif
+          if git diff --cached --quiet; then
+            echo "demo.gif unchanged"
+          else
+            git commit -m "chore(demo): regenerate demo.gif [skip ci]"
+            git push
+          fi
