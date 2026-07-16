@@ -62,9 +62,8 @@ webhook_url = ""
 # Optional — history fetching is disabled if this is empty.
 relay_url = ""
 
-# Web setup wizard URL (used when choosing "web" setup during onboarding).
-# Leave empty unless you host the web wizard yourself. NOTE: the web-setup path
-# sends your Discord access token to this host — prefer terminal setup.
+# Deprecated and unused: the web-setup onboarding path was removed, so no token
+# is ever sent to a web host. Retained only for backward compatibility.
 web_setup_url = ""
 
 # ── Auth ─────────────────────────────────────────────────────────────────

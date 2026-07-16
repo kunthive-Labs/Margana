@@ -55,16 +55,18 @@ build falls back to CGo `libolm`.
 marga
 ```
 
-First run launches an interactive setup wizard.
+First run launches an interactive setup wizard that asks which network to
+connect. Pick **Matrix** for a zero-setup start.
 
-- **Discord** needs a relay. The default endpoints (`marga.kunthive.com`) are
-  **placeholders** — stand up your own relay (or point at one you trust) and set
-  the URLs in config. See [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
-- **Matrix** needs no relay. Add a `[[networks]]` block (below) with your
-  homeserver and user id. On first connect Marga prompts for your password in
-  the terminal (read without echo) and stores the resulting token in your
+- **Matrix** *(works now, no server needed)* — choose it in the wizard and enter
+  your homeserver and user id. Marga prompts for your password in the terminal
+  (read without echo) on first connect and stores the resulting token in your OS
   keyring; for headless/CI runs, set `MARGA_MATRIX_PASSWORD` instead. Encrypted
   rooms work out of the box, and joined spaces appear as switchable servers.
+- **Discord** *(advanced)* — needs a self-hosted relay and a registered Discord
+  application. The default endpoints (`marga.kunthive.com`) are **placeholders**;
+  stand up your own relay and set the URLs in config first. See
+  [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
 
 ## Keyboard shortcuts
 

@@ -33,9 +33,9 @@ Marga is a client; its security posture depends partly on how you deploy it.
   stored in the OS keyring, not on disk in clear. Device trust is currently
   use-on-first-key — there is no interactive verification / cross-signing UI
   yet, so this does not defend against a homeserver substituting device keys.
-- **Web setup caveat.** The optional "web setup" onboarding path sends your
-  Discord access token to `server.web_setup_url`. Leave it empty (use terminal
-  setup) unless you host that wizard yourself over HTTPS.
+- **No token in URLs.** Onboarding is fully local: no Discord access token is
+  ever placed in a URL or sent to a web host. (An earlier "web setup" path that
+  did this has been removed; `server.web_setup_url` is now unused.)
 
 ## Supported versions
 

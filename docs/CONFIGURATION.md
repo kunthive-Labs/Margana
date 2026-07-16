@@ -72,7 +72,7 @@ run or trust. See [SELF_HOSTING.md](SELF_HOSTING.md). Matrix needs none of this.
 | `relay_url` | string | one of webhook/relay | Relay REST base URL for history fetching and sending. |
 | `api_key` | string | depends on relay | API key sent as `X-API-Key` to the relay. |
 | `bot_client_id` | string | no | Discord bot client ID (used to build invite links during setup). |
-| `web_setup_url` | string | no | URL of the optional web setup wizard. **The web-setup path sends your Discord token to this host** — prefer terminal setup. |
+| `web_setup_url` | string | no | **Deprecated and unused.** The web-setup onboarding path was removed; no token is ever sent to a web host. Retained only for backward compatibility. |
 
 ### `[auth]` / `[auth.discord]`
 
@@ -164,7 +164,7 @@ read from a `.env` file in the working directory (see [`.env.example`](../.env.e
 | `MARGA_RELAY_URL` | `server.relay_url` | |
 | `MARGA_RELAY_API_KEY` | `server.api_key` | `MARGA_API_KEY` is a legacy alias. |
 | `MARGA_BOT_CLIENT_ID` | `server.bot_client_id` | |
-| `MARGA_WEB_SETUP_URL` | `server.web_setup_url` | |
+| `MARGA_WEB_SETUP_URL` | `server.web_setup_url` | deprecated / unused |
 | `MARGA_AUTH_ENABLED` | `auth.enabled` | `true`/`false`. |
 | `MARGA_AUTH_PROVIDER` | `auth.provider` | |
 | `MARGA_DISCORD_CLIENT_ID` | `auth.discord.client_id` | |
