@@ -507,7 +507,7 @@ func (m Model) renderErrors(width, height int) string {
 		err := m.errors[i]
 		ts := err.Timestamp.Local().Format("01-02 15:04:05")
 		msg := err.Message
-		maxMsgW := innerW - len(ts) - 3
+		maxMsgW := innerW - len(ts) - 5
 		if maxMsgW < 10 {
 			maxMsgW = 10
 		}
@@ -519,9 +519,11 @@ func (m Model) renderErrors(width, height int) string {
 		line := fmt.Sprintf("%s  %s", ts, msg)
 		isSelected := i == m.errorScrollIdx
 		if isSelected {
-			line = lipgloss.NewStyle().Foreground(themeAccent).Render(line)
+			// A "> " marker (plus bold) makes the selection legible without relying
+			// on color alone (accessibility / NO_COLOR).
+			line = lipgloss.NewStyle().Foreground(themeAccent).Bold(true).Render("> " + line)
 		} else {
-			line = lipgloss.NewStyle().Foreground(themeFg).Render(line)
+			line = lipgloss.NewStyle().Foreground(themeFg).Render("  " + line)
 		}
 		lines = append(lines, line)
 	}
