@@ -221,8 +221,20 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s config: %v\n", cAccent("✗"), err)
-		os.Exit(1)
+		// A brand-new user has no config file yet, and the default config enables
+		// Discord auth without relay endpoints, so Load's validation fails. Rather
+		// than strand them, start onboarding from a clean slate with Discord
+		// disabled; they choose Matrix (zero-setup) or Discord in the network-first
+		// wizard. A validation error on an *existing* file is still fatal. Load
+		// succeeds for env-only configs, so headless MARGA_* setups are preserved.
+		if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
+			cfg = config.Default()
+			cfg.Auth.Enabled = false
+			forceSetup = true
+		} else {
+			fmt.Fprintf(os.Stderr, "%s config: %v\n", cAccent("✗"), err)
+			os.Exit(1)
+		}
 	}
 
 	// Set up logging as early as the config allows. It is off unless the
@@ -231,9 +243,14 @@ func main() {
 	defer appLogger.Close()
 	appLogger.Info("marga starting", "version", version, "config", configPath)
 
-	if err := discord.EnsureUserConfig(context.Background(), cfg, configPath); err != nil {
-		fmt.Fprintf(os.Stderr, "%s auth: %v\n", cAccent("✗"), err)
-		os.Exit(1)
+	// Returning Discord users get their token ensured/refreshed up front. New and
+	// Matrix-only users skip this: EnsureUserConfig triggers Discord OAuth, which
+	// must not run before the user has actually chosen Discord in the wizard.
+	if !setup.NeedsOnboarding(cfg, forceSetup) {
+		if err := discord.EnsureUserConfig(context.Background(), cfg, configPath); err != nil {
+			fmt.Fprintf(os.Stderr, "%s auth: %v\n", cAccent("✗"), err)
+			os.Exit(1)
+		}
 	}
 
 	auth := discord.New(cfg)
@@ -472,10 +489,9 @@ func runSetupRestart(configPath string) {
 		fmt.Fprintf(os.Stderr, "%s config: %v\n", cAccent("✗"), err)
 		os.Exit(1)
 	}
-	if err := discord.EnsureUserConfig(context.Background(), cfg, configPath); err != nil {
-		fmt.Fprintf(os.Stderr, "%s auth: %v\n", cAccent("✗"), err)
-		os.Exit(1)
-	}
+	// Discord auth is handled inside the wizard when the user picks Discord, so
+	// don't force it here — a Matrix-only user re-running setup must not be
+	// dropped into Discord OAuth.
 	auth := discord.New(cfg)
 	if err := setup.RunSetup(context.Background(), cfg, configPath, auth, true); err != nil {
 		fmt.Fprintf(os.Stderr, "%s setup: %v\n", cAccent("✗"), err)
