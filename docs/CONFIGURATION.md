@@ -89,9 +89,49 @@ run or trust. See [SELF_HOSTING.md](SELF_HOSTING.md). Matrix needs none of this.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `theme` | string | `default` | Color theme: `default`, `dracula`, or `solarized`. |
+| `theme` | string | `default` | Color theme: `default`, `dracula`, `solarized`, `none`/`terminal` (inherit the terminal's own background — best for transparent or light terminals), or any custom palette defined in a `[themes.<name>]` block. |
 | `history_limit` | int | `100` | Messages fetched on startup. Values ≤ 0 reset to `100`. |
 | `image_protocol` | string | `auto` | Inline-image protocol: `auto`, `iterm2`, `kitty`, or `none`. See the [note on image rendering](OPERATIONS.md#image-rendering). |
+
+### `[themes.<name>]` — custom palettes
+
+Define your own palette in a `[themes.<name>]` block, then select it with
+`ui.theme = "<name>"`. Every key is optional — omitted keys fall back to the
+built-in `default` palette, so a partial theme still works. Values are hex
+(`#rrggbb` or `#rgb`) or an ANSI palette index (`"0"`..`"255"`, which tracks the
+terminal's own 16-color scheme).
+
+```toml
+[ui]
+theme = "nord"
+
+[themes.nord]
+bg                 = "#2e3440"
+fg                 = "#d8dee9"
+accent             = "#88c0d0"
+accent_dim         = "#4c566a"
+cyan               = "#8fbcbb"
+dim                = "#616e88"
+border             = "#434c5e"
+status_bg          = "#3b4252"
+err                = "#bf616a"
+warn               = "#ebcb8b"
+input_border       = "#434c5e"
+input_border_focus = "#88c0d0"
+selected_bg        = "#434c5e"
+username_colors    = ["#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead"]
+```
+
+### Accessibility & `NO_COLOR`
+
+- Set the `NO_COLOR` environment variable (any value, including empty) to disable
+  all color while keeping text attributes such as bold and italic. See
+  <https://no-color.org>.
+- `theme = "none"` (alias `terminal`) inherits the terminal's own background and
+  default foreground, so transparent and light terminals render correctly.
+- Status is never conveyed by color alone: the connection state carries a glyph
+  and a word (`● connected`, `◌ reconnecting`, `○ offline`), and the selected row
+  in list panels uses a `>` marker in addition to color.
 
 ### `[github]`
 
