@@ -2,6 +2,14 @@
   <img src="logo.png" alt="Marga" width="160">
 </p>
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Marga - one terminal UI for Discord and Matrix" width="820">
+</p>
+
+<p align="center">
+  <em>Try it now, no setup required:</em> <code>marga --demo</code>
+</p>
+
 # Marga
 
 Terminal-native, multi-network realtime chat. One TUI for several chat
