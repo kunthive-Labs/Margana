@@ -236,8 +236,8 @@ func TestScaleBackoff(t *testing.T) {
 func TestStatusChanges(t *testing.T) {
 	client := New("wss://localhost/fake", "user", "general", "")
 
-	client.emitStatus(StatusConnected, nil)
-	client.emitStatus(StatusDisconnected, nil)
+	client.emitStatus(StatusConnected, nil, 0)
+	client.emitStatus(StatusReconnecting, nil, 5*time.Second)
 
 	select {
 	case sc := <-client.StatusChanges():
@@ -250,8 +250,11 @@ func TestStatusChanges(t *testing.T) {
 
 	select {
 	case sc := <-client.StatusChanges():
-		if sc.Status != StatusDisconnected {
-			t.Errorf("expected disconnected status, got %q", sc.Status)
+		if sc.Status != StatusReconnecting {
+			t.Errorf("expected reconnecting status, got %q", sc.Status)
+		}
+		if sc.RetryIn != 5*time.Second {
+			t.Errorf("expected RetryIn=5s, got %v", sc.RetryIn)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for status")

@@ -36,6 +36,9 @@ const (
 type StatusChange struct {
 	Status Status
 	Err    error
+	// RetryIn is the delay until the next reconnect attempt. Only meaningful for
+	// StatusReconnecting; zero otherwise.
+	RetryIn time.Duration
 }
 
 type Client struct {
@@ -83,7 +86,7 @@ func (c *Client) Connect() error {
 	if err := c.dial(); err != nil {
 		return fmt.Errorf("initial connection failed: %w", err)
 	}
-	c.emitStatus(StatusConnected, nil)
+	c.emitStatus(StatusConnected, nil, 0)
 	_ = c.identify()
 	go c.readLoop()
 	return nil
@@ -101,7 +104,7 @@ func (c *Client) ConnectWithRetry(ctx context.Context) {
 		err := c.dial()
 		if err != nil {
 			c.log.Printf("ws: connect failed: %v, retrying in %v", err, backoff)
-			c.emitStatus(StatusReconnecting, err)
+			c.emitStatus(StatusReconnecting, err, backoff)
 			select {
 			case <-time.After(backoff):
 				backoff = scaleBackoff(backoff)
@@ -111,7 +114,7 @@ func (c *Client) ConnectWithRetry(ctx context.Context) {
 			}
 		}
 
-		c.emitStatus(StatusConnected, nil)
+		c.emitStatus(StatusConnected, nil, 0)
 		_ = c.identify()
 		backoff = initialBackoff
 		c.readLoop()
@@ -122,9 +125,9 @@ func (c *Client) ConnectWithRetry(ctx context.Context) {
 		default:
 		}
 
-		c.emitStatus(StatusDisconnected, nil)
+		c.emitStatus(StatusDisconnected, nil, 0)
 		c.log.Printf("ws: connection lost, reconnecting in %v", backoff)
-		c.emitStatus(StatusReconnecting, nil)
+		c.emitStatus(StatusReconnecting, nil, backoff)
 		select {
 		case <-time.After(backoff):
 			backoff = scaleBackoff(backoff)
@@ -408,9 +411,9 @@ func (c *Client) readLoop() {
 	}
 }
 
-func (c *Client) emitStatus(s Status, err error) {
+func (c *Client) emitStatus(s Status, err error, retryIn time.Duration) {
 	select {
-	case c.statusCh <- StatusChange{Status: s, Err: err}:
+	case c.statusCh <- StatusChange{Status: s, Err: err, RetryIn: retryIn}:
 	default:
 	}
 }
