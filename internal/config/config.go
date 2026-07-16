@@ -23,15 +23,16 @@ type GithubConfig struct {
 }
 
 type Config struct {
-	General          GeneralConfig      `toml:"general"`
-	Server           ServerConfig       `toml:"server"`
-	Auth             AuthConfig         `toml:"auth"`
-	UI               UIConfig           `toml:"ui"`
-	Github           GithubConfig       `toml:"github"`
-	Notifications    NotificationConfig `toml:"notifications"`
-	Logging          LoggingConfig      `toml:"logging"`
-	ConfiguredGuilds []GuildEntry       `toml:"configured_guilds"`
-	Networks         []NetworkConfig    `toml:"networks"`
+	General          GeneralConfig          `toml:"general"`
+	Server           ServerConfig           `toml:"server"`
+	Auth             AuthConfig             `toml:"auth"`
+	UI               UIConfig               `toml:"ui"`
+	Github           GithubConfig           `toml:"github"`
+	Notifications    NotificationConfig     `toml:"notifications"`
+	Logging          LoggingConfig          `toml:"logging"`
+	ConfiguredGuilds []GuildEntry           `toml:"configured_guilds"`
+	Networks         []NetworkConfig        `toml:"networks"`
+	Themes           map[string]ThemeColors `toml:"themes"`
 }
 
 // NetworkConfig describes one chat network connection. Discord is implicit via
@@ -131,6 +132,27 @@ type UIConfig struct {
 	// CoachShown records that the first-run coach overlay has been dismissed, so
 	// it is shown exactly once. Persisted by the TUI on first dismissal.
 	CoachShown bool `toml:"coach_shown"`
+}
+
+// ThemeColors is a user-defined palette from a [themes.<name>] config block.
+// Every field is optional; empty fields fall back to the built-in default theme.
+// Values are hex ("#rrggbb" or "#rgb") or an ANSI palette index ("0".."255").
+// See docs/CONFIGURATION.md.
+type ThemeColors struct {
+	Bg               string   `toml:"bg"`
+	Fg               string   `toml:"fg"`
+	Accent           string   `toml:"accent"`
+	AccentDim        string   `toml:"accent_dim"`
+	Cyan             string   `toml:"cyan"`
+	Dim              string   `toml:"dim"`
+	Border           string   `toml:"border"`
+	StatusBg         string   `toml:"status_bg"`
+	Err              string   `toml:"err"`
+	Warn             string   `toml:"warn"`
+	InputBorder      string   `toml:"input_border"`
+	InputBorderFocus string   `toml:"input_border_focus"`
+	SelectedBg       string   `toml:"selected_bg"`
+	UsernameColors   []string `toml:"username_colors"`
 }
 
 // LoggingConfig controls Marga's diagnostic logging. Logging is disabled unless
