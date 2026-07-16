@@ -115,7 +115,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   disables color; custom palettes load from config; status is legible without
   relying on color alone.
 
-### Phase 5 — Web presence & shareable demo  ☐
+### Phase 5 — Web presence & shareable demo  ☑
 - **Goal:** A shareable page and a demo that never goes stale.
 - **Items:** H7 (GitHub Pages landing/docs), D6 (`vhs`-scripted demo in CI).
 - **Depends on:** Phase 1 (demo asset + install lines exist), Phase 0 (name).
@@ -327,7 +327,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** status is legible without color; behavior documented.
 
 ### H7 · GitHub Pages landing / docs page
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Low–Med  ·  **Phase:** 5
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Low–Med  ·  **Phase:** 5
 - **Why:** The legitimate analog to the brief's "web experience" — one shareable
   page for HN/Product Hunt/socials with the demo + install one-liners + docs.
 - **Work:** simple static page (embed the C3 demo, per-OS install, docs links) via
@@ -410,6 +410,9 @@ web surface and a different audience. Do not reintroduce these here:
 | 2026-07-16 | 4 | H2 (config-driven themes) | ☑ | `Theme` struct + `builtinThemes`/`customThemes`; `[themes.<name>]` blocks (`config.ThemeColors`) load via `tui.RegisterCustomThemes` with per-field fallback to default. Documented in CONFIGURATION.md + config.example.toml. |
 | 2026-07-16 | 4 | H6 (accessibility) | ☑ | Connection state glyphs+words (from H4) read without color; errors-modal selection uses a `>` marker + bold; NO_COLOR honored; accessibility section added to docs. |
 | 2026-07-16 | 4 | Phase 4 | ☑ | Terminal-native polish complete. `go build`/`vet`/`test -tags goolm` green (16 pkgs); added none/custom-theme/NO_COLOR tests. Not committed. |
+| 2026-07-16 | 5 | H7 (landing/docs) | ☑ | Existing GitHub Pages landing kept; added a Docs footer column + nav link (5 docs), og:image/twitter-card/favicon, and an embedded demo GIF. Per-OS install one-liners still await **C1** (Phase 1, out of scope) — the page already states packages aren't published. |
+| 2026-07-16 | 5 | D6 (vhs demo in CI) | ☑ | Added a `MARGA_DEMO` / `--demo` offline demo mode (new `internal/network/demo` scripted adapters, no creds/network) so the demo is reproducible headlessly; `docs/demo.tape` + `.github/workflows/demo.yml` (workflow_dispatch). Rendered `assets/demo.gif` (1200×700) with vhs and embedded it in README + landing. |
+| 2026-07-16 | 5 | Phase 5 | ☑ | Web presence & shareable demo complete for in-scope work: public landing updated + a reproducible demo GIF that CI can regenerate. Remaining gap — per-OS install one-liners — depends on C1 (Phase 1 packaging, out of current scope). `go build`/`vet`/`test -tags goolm` green. Not committed. |
 
 ---
 
