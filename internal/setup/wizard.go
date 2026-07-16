@@ -26,7 +26,8 @@ const botPermissions = 536988672
 type Step int
 
 const (
-	StepChooseMethod Step = iota
+	StepChooseNetwork Step = iota
+	StepMatrixConnect
 	StepPickGuild
 	StepConfirmGuild
 	StepInviteBot
@@ -36,11 +37,19 @@ const (
 
 type WizardState struct {
 	Step          Step
-	Method        string
-	FromWeb       bool
+	Network       string
 	Guilds        []discord.Guild
 	SelectedGuild discord.Guild
 	PrevGuild     discord.Guild
+}
+
+// NeedsOnboarding reports whether the first-run wizard should run. It returns
+// true when nothing is configured yet — no Discord server (guild) and no
+// [[networks]] entry — or when setup is forced (marga --setup). It is the single
+// source of truth shared by cmd/marga (to decide whether to run the wizard and
+// whether to skip the pre-wizard Discord OAuth) and RunSetup's own guard.
+func NeedsOnboarding(cfg *config.Config, force bool) bool {
+	return force || (cfg.General.GuildID == "" && len(cfg.ConfiguredGuilds) == 0 && len(cfg.Networks) == 0)
 }
 
 func readLine(ctx context.Context, reader *bufio.Reader) (string, error) {
@@ -62,7 +71,7 @@ func readLine(ctx context.Context, reader *bufio.Reader) (string, error) {
 }
 
 func RunSetup(ctx context.Context, cfg *config.Config, configPath string, auth *discord.Authenticator, force bool) error {
-	if !force && (cfg.General.GuildID != "" || len(cfg.ConfiguredGuilds) > 0) {
+	if !NeedsOnboarding(cfg, force) {
 		return nil
 	}
 
@@ -77,12 +86,12 @@ func RunSetup(ctx context.Context, cfg *config.Config, configPath string, auth *
 	}()
 
 	reader := bufio.NewReader(os.Stdin)
-	state := &WizardState{Step: StepChooseMethod}
+	state := &WizardState{Step: StepChooseNetwork}
 
 	clearScreen()
 	printLogo()
 	fmt.Printf("  %s\n", bold("Setup Wizard"))
-	fmt.Printf("  %s\n", dim("Connect Marga to your Discord server."))
+	fmt.Printf("  %s\n", dim("Connect Marga to a chat network."))
 	fmt.Println()
 
 	for state.Step != StepDone {
@@ -93,8 +102,12 @@ func RunSetup(ctx context.Context, cfg *config.Config, configPath string, auth *
 		}
 
 		switch state.Step {
-		case StepChooseMethod:
-			if err := handleChooseMethod(ctx, reader, cfg, state); err != nil {
+		case StepChooseNetwork:
+			if err := handleChooseNetwork(ctx, reader, cfg, configPath, state); err != nil {
+				return err
+			}
+		case StepMatrixConnect:
+			if err := handleMatrixConnect(ctx, reader, cfg, configPath, state); err != nil {
 				return err
 			}
 		case StepPickGuild:
@@ -127,15 +140,15 @@ func RunSetup(ctx context.Context, cfg *config.Config, configPath string, auth *
 	return saveConfig(cfg, configPath, state)
 }
 
-func handleChooseMethod(ctx context.Context, reader *bufio.Reader, cfg *config.Config, state *WizardState) error {
-	state.Method = ""
-	step("How would you like to configure?")
+func handleChooseNetwork(ctx context.Context, reader *bufio.Reader, cfg *config.Config, configPath string, state *WizardState) error {
+	state.Network = ""
+	step("Which network would you like to connect?")
 	fmt.Println()
-	option("1", "Terminal "+dim("(recommended)"))
-	option("2", "Web browser")
+	option("1", "Matrix  "+dim("— works now, no server needed"))
+	option("2", "Discord "+dim("— advanced, needs a self-hosted relay"))
 	fmt.Println()
 
-	for state.Method == "" {
+	for state.Network == "" {
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -148,40 +161,121 @@ func handleChooseMethod(ctx context.Context, reader *bufio.Reader, cfg *config.C
 
 		switch choice {
 		case "1":
-			state.Method = "terminal"
-			state.Step = StepPickGuild
+			state.Network = "matrix"
+			state.Step = StepMatrixConnect
 		case "2":
-			state.Method = "web"
-			webURL := fmt.Sprintf("%s/terminal-setup#token=%s", cfg.Server.WebSetupURL, cfg.Auth.Discord.AccessToken)
-			if err := openBrowser(webURL); err != nil {
-				fmt.Printf("\n  %s\n", dim("Could not open browser automatically."))
-			}
-			fmt.Println()
-			fmt.Printf("  %s\n", bold("Setup URL:"))
-			fmt.Printf("  %s\n\n", accent(webURL))
-			fmt.Printf("  %s\n", dim("Open the link above in your browser and complete setup there."))
-			prompt("Press Enter when done... ")
-			if _, err := readLine(ctx, reader); err != nil {
-				return nil
-			}
-			state.FromWeb = true
-			if webConfig, ok := fetchWebConfig(cfg, state); ok {
-				state.SelectedGuild = discord.Guild{
-					ID:   webConfig.GuildID,
-					Name: webConfig.GuildName,
+			// Discord is the advanced path: it needs a self-hosted relay and a
+			// registered Discord application. Only continue when that infra is
+			// present; otherwise point the user at the docs and loop back so a
+			// first-timer isn't stranded at a dead end.
+			switch {
+			case cfg.Auth.Discord.ClientID != "" && cfg.Server.WebsocketURL != "":
+				// Relay + Discord app configured: ensure a valid token (refresh or
+				// OAuth as needed), then choose a server.
+				cfg.Auth.Enabled = true
+				cfg.Auth.Provider = "discord"
+				if err := discord.EnsureUserConfig(ctx, cfg, configPath); err != nil {
+					fmt.Printf("\n  %s\n\n", errText(fmt.Sprintf("Discord authentication failed: %v", err)))
+					continue
 				}
-				state.Step = StepDone
-			} else {
-				fmt.Println()
-				fmt.Printf("  %s\n", errText("Could not retrieve web setup configuration. Falling back to terminal setup..."))
-				state.Method = "terminal"
+				state.Network = "discord"
 				state.Step = StepPickGuild
+			case cfg.Auth.Discord.AccessToken != "":
+				// A token is already present (e.g. env-configured) but the app/relay
+				// aren't set here — proceed with what we have.
+				state.Network = "discord"
+				state.Step = StepPickGuild
+			default:
+				fmt.Println()
+				fmt.Printf("  %s\n", warn("Discord needs a self-hosted relay and a registered Discord app."))
+				fmt.Printf("  %s\n", dim("See docs/SELF_HOSTING.md, or choose Matrix (1) for a zero-setup connection."))
+				fmt.Println()
 			}
 		default:
 			fmt.Printf("  %s\n\n", errText("Please enter 1 or 2."))
 		}
 	}
 	return nil
+}
+
+// handleMatrixConnect gathers the non-secret Matrix connection details
+// (homeserver + user id), writes them as an enabled [[networks]] entry, and
+// disables Discord for a Matrix-only first run so config validation doesn't
+// demand relay endpoints. The password is never handled here: the Matrix adapter
+// prompts for it at Connect time and exchanges it for a keyring-stored token.
+func handleMatrixConnect(ctx context.Context, reader *bufio.Reader, cfg *config.Config, configPath string, state *WizardState) error {
+	clearScreen()
+	printLogo()
+	step("Matrix quick-connect")
+	fmt.Println()
+	fmt.Printf("  %s\n", dim("Connect directly to a Matrix homeserver — no relay, end-to-end encrypted."))
+	fmt.Println()
+
+	prompt("Homeserver URL (e.g. https://matrix.org): ")
+	hs, err := readLine(ctx, reader)
+	if err != nil {
+		return nil
+	}
+	hs = normalizeHomeserver(hs)
+
+	prompt("User ID (e.g. @you:matrix.org): ")
+	uid, err := readLine(ctx, reader)
+	if err != nil {
+		return nil
+	}
+	uid = strings.TrimSpace(uid)
+
+	if hs == "" || uid == "" {
+		fmt.Printf("\n  %s\n\n", errText("Homeserver and user ID are both required."))
+		return nil // stay on StepMatrixConnect; the wizard loop re-enters this step
+	}
+
+	entry := config.NetworkConfig{ID: "matrix", Type: "matrix", Enabled: true, Homeserver: hs, UserID: uid}
+	replaced := false
+	for i := range cfg.Networks {
+		if cfg.Networks[i].ID == "matrix" {
+			cfg.Networks[i] = entry
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		cfg.Networks = append(cfg.Networks, entry)
+	}
+
+	// Disable Discord only for a clean Matrix-only first run; preserve it when a
+	// Discord server or app is already configured (so multi-network setups keep
+	// working).
+	if cfg.General.GuildID == "" && len(cfg.ConfiguredGuilds) == 0 && cfg.Auth.Discord.ClientID == "" {
+		cfg.Auth.Enabled = false
+	}
+
+	if err := cfg.Save(configPath); err != nil {
+		return fmt.Errorf("saving configuration: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("  %s %s\n", success("✓"), bold("Matrix configured"))
+	bullet("Homeserver", hs)
+	bullet("User ID", uid)
+	fmt.Printf("\n  %s\n", dim("You'll be asked for your password when Marga connects."))
+	fmt.Println()
+	state.Step = StepDone
+	return nil
+}
+
+// normalizeHomeserver defaults a missing scheme to https and trims a trailing
+// slash, mirroring the Matrix adapter's own normalization so a value typed here
+// (e.g. "matrix.org") resolves the same way when the adapter builds its client.
+func normalizeHomeserver(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if !strings.HasPrefix(s, "http://") && !strings.HasPrefix(s, "https://") {
+		s = "https://" + s
+	}
+	return strings.TrimSuffix(s, "/")
 }
 
 func handlePickGuild(ctx context.Context, reader *bufio.Reader, auth *discord.Authenticator, cfg *config.Config, state *WizardState) error {
@@ -225,14 +319,6 @@ func handlePickGuild(ctx context.Context, reader *bufio.Reader, auth *discord.Au
 	}
 
 	botPresence := make(map[string]bool)
-	if state.FromWeb {
-		for _, g := range state.Guilds {
-			checkURL := fmt.Sprintf("%s/api/bot/check/%s", cfg.Server.RelayURL, g.ID)
-			if inGuild, err := pollBotPresence(ctx, checkURL, cfg.Server.APIKey); err == nil && inGuild {
-				botPresence[g.ID] = true
-			}
-		}
-	}
 
 	fmt.Println()
 	step("Select a server:")
@@ -440,11 +526,6 @@ func saveConfig(cfg *config.Config, configPath string, state *WizardState) error
 	}
 
 	channel := cfg.General.Channel
-	if state.FromWeb {
-		if webConfig, ok := fetchWebConfig(cfg, state); ok && webConfig.ChannelName != "" {
-			channel = webConfig.ChannelName
-		}
-	}
 
 	entry := config.GuildEntry{
 		ID:         state.SelectedGuild.ID,
@@ -477,56 +558,6 @@ func saveConfig(cfg *config.Config, configPath string, state *WizardState) error
 	}
 	fmt.Println()
 	return nil
-}
-
-type webSetupConfig struct {
-	GuildID     string `json:"guild_id"`
-	GuildName   string `json:"guild_name"`
-	ChannelID   string `json:"channel_id"`
-	ChannelName string `json:"channel_name"`
-}
-
-func fetchWebConfig(cfg *config.Config, state *WizardState) (*webSetupConfig, bool) {
-	discordID := cfg.General.DiscordID
-	if discordID == "" {
-		return nil, false
-	}
-
-	url := fmt.Sprintf("%s/api/setup/config/%s", cfg.Server.RelayURL, discordID)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, false
-	}
-	if cfg.Server.APIKey != "" {
-		req.Header.Set("X-API-Key", cfg.Server.APIKey)
-	}
-
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
-	if err != nil {
-		return nil, false
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		OK          bool   `json:"ok"`
-		GuildID     string `json:"guild_id"`
-		GuildName   string `json:"guild_name"`
-		ChannelID   string `json:"channel_id"`
-		ChannelName string `json:"channel_name"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || !result.OK {
-		return nil, false
-	}
-
-	return &webSetupConfig{
-		GuildID:     result.GuildID,
-		GuildName:   result.GuildName,
-		ChannelID:   result.ChannelID,
-		ChannelName: result.ChannelName,
-	}, true
 }
 
 func openBrowser(target string) error {

@@ -106,8 +106,8 @@ make build      # → bin/marga (sets the goolm tag for you)
   and [SECURITY.md](../SECURITY.md).
 - The Discord relay sees message content/metadata for relay-backed networks;
   Matrix connects directly with no third party. See [ARCHITECTURE.md](ARCHITECTURE.md).
-- The optional **web setup** path sends your Discord access token to the
-  configured `web_setup_url`. Prefer terminal setup.
+- Onboarding never transmits your Discord access token to a web host; the former
+  web-setup path has been removed.
 - Restrict permissions on the config and data directories on shared machines.
 
 ---

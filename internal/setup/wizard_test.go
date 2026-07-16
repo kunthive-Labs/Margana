@@ -65,45 +65,38 @@ func TestPollBotPresenceFalse(t *testing.T) {
 	}
 }
 
-func TestFetchWebConfig(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasSuffix(r.URL.Path, "/api/setup/config/user-123") {
-			t.Errorf("unexpected path %q", r.URL.Path)
+func TestNeedsOnboarding(t *testing.T) {
+	guild := func() *config.Config { c := &config.Config{}; c.General.GuildID = "g1"; return c }
+	cases := []struct {
+		name  string
+		cfg   *config.Config
+		force bool
+		want  bool
+	}{
+		{"nothing configured triggers onboarding", &config.Config{}, false, true},
+		{"force always triggers", guild(), true, true},
+		{"discord guild set skips", guild(), false, false},
+		{"configured guild skips", &config.Config{ConfiguredGuilds: []config.GuildEntry{{ID: "g1"}}}, false, false},
+		{"matrix network skips", &config.Config{Networks: []config.NetworkConfig{{ID: "matrix", Type: "matrix"}}}, false, false},
+	}
+	for _, tc := range cases {
+		if got := NeedsOnboarding(tc.cfg, tc.force); got != tc.want {
+			t.Errorf("%s: NeedsOnboarding = %v, want %v", tc.name, got, tc.want)
 		}
-		_, _ = w.Write([]byte(`{"ok":true,"guild_id":"g1","guild_name":"Alpha","channel_id":"c1","channel_name":"general"}`))
-	}))
-	defer srv.Close()
-
-	cfg := &config.Config{}
-	cfg.General.DiscordID = "user-123"
-	cfg.Server.RelayURL = srv.URL
-
-	got, ok := fetchWebConfig(cfg, &WizardState{})
-	if !ok {
-		t.Fatal("expected ok=true")
-	}
-	if got.GuildID != "g1" || got.GuildName != "Alpha" || got.ChannelName != "general" {
-		t.Errorf("unexpected web config: %+v", got)
 	}
 }
 
-func TestFetchWebConfigRequiresDiscordID(t *testing.T) {
-	cfg := &config.Config{}
-	if _, ok := fetchWebConfig(cfg, &WizardState{}); ok {
-		t.Error("expected ok=false when DiscordID is empty")
+func TestNormalizeHomeserver(t *testing.T) {
+	cases := map[string]string{
+		"matrix.org":            "https://matrix.org",
+		"https://matrix.org/":   "https://matrix.org",
+		"http://localhost:8008": "http://localhost:8008",
+		"  matrix.org  ":        "https://matrix.org",
+		"":                      "",
 	}
-}
-
-func TestFetchWebConfigNotOK(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"ok":false}`))
-	}))
-	defer srv.Close()
-
-	cfg := &config.Config{}
-	cfg.General.DiscordID = "user-123"
-	cfg.Server.RelayURL = srv.URL
-	if _, ok := fetchWebConfig(cfg, &WizardState{}); ok {
-		t.Error("expected ok=false when server reports ok:false")
+	for in, want := range cases {
+		if got := normalizeHomeserver(in); got != want {
+			t.Errorf("normalizeHomeserver(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

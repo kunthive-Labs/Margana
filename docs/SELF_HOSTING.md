@@ -90,7 +90,7 @@ self-hosting:
 | `MARGA_RELAY_URL` | `server.relay_url` |
 | `MARGA_WEBHOOK_URL` | `server.webhook_url` |
 | `MARGA_API_KEY` | `server.api_key` (relay auth, if your relay requires it) |
-| `MARGA_WEB_SETUP_URL` | `server.web_setup_url` (web onboarding wizard) |
+| `MARGA_WEB_SETUP_URL` | `server.web_setup_url` (deprecated / unused) |
 | `MARGA_DISCORD_CLIENT_ID` | `auth.discord.client_id` |
 | `MARGA_DISCORD_CLIENT_SECRET` | `auth.discord.client_secret` |
 | `MARGA_DISCORD_REDIRECT_URL` | `auth.discord.redirect_url` |

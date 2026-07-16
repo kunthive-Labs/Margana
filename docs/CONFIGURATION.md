@@ -72,7 +72,7 @@ run or trust. See [SELF_HOSTING.md](SELF_HOSTING.md). Matrix needs none of this.
 | `relay_url` | string | one of webhook/relay | Relay REST base URL for history fetching and sending. |
 | `api_key` | string | depends on relay | API key sent as `X-API-Key` to the relay. |
 | `bot_client_id` | string | no | Discord bot client ID (used to build invite links during setup). |
-| `web_setup_url` | string | no | URL of the optional web setup wizard. **The web-setup path sends your Discord token to this host** — prefer terminal setup. |
+| `web_setup_url` | string | no | **Deprecated and unused.** The web-setup onboarding path was removed; no token is ever sent to a web host. Retained only for backward compatibility. |
 
 ### `[auth]` / `[auth.discord]`
 
@@ -89,9 +89,49 @@ run or trust. See [SELF_HOSTING.md](SELF_HOSTING.md). Matrix needs none of this.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `theme` | string | `default` | Color theme: `default`, `dracula`, or `solarized`. |
+| `theme` | string | `default` | Color theme: `default`, `dracula`, `solarized`, `none`/`terminal` (inherit the terminal's own background — best for transparent or light terminals), or any custom palette defined in a `[themes.<name>]` block. |
 | `history_limit` | int | `100` | Messages fetched on startup. Values ≤ 0 reset to `100`. |
 | `image_protocol` | string | `auto` | Inline-image protocol: `auto`, `iterm2`, `kitty`, or `none`. See the [note on image rendering](OPERATIONS.md#image-rendering). |
+
+### `[themes.<name>]` — custom palettes
+
+Define your own palette in a `[themes.<name>]` block, then select it with
+`ui.theme = "<name>"`. Every key is optional — omitted keys fall back to the
+built-in `default` palette, so a partial theme still works. Values are hex
+(`#rrggbb` or `#rgb`) or an ANSI palette index (`"0"`..`"255"`, which tracks the
+terminal's own 16-color scheme).
+
+```toml
+[ui]
+theme = "nord"
+
+[themes.nord]
+bg                 = "#2e3440"
+fg                 = "#d8dee9"
+accent             = "#88c0d0"
+accent_dim         = "#4c566a"
+cyan               = "#8fbcbb"
+dim                = "#616e88"
+border             = "#434c5e"
+status_bg          = "#3b4252"
+err                = "#bf616a"
+warn               = "#ebcb8b"
+input_border       = "#434c5e"
+input_border_focus = "#88c0d0"
+selected_bg        = "#434c5e"
+username_colors    = ["#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead"]
+```
+
+### Accessibility & `NO_COLOR`
+
+- Set the `NO_COLOR` environment variable (any value, including empty) to disable
+  all color while keeping text attributes such as bold and italic. See
+  <https://no-color.org>.
+- `theme = "none"` (alias `terminal`) inherits the terminal's own background and
+  default foreground, so transparent and light terminals render correctly.
+- Status is never conveyed by color alone: the connection state carries a glyph
+  and a word (`● connected`, `◌ reconnecting`, `○ offline`), and the selected row
+  in list panels uses a `>` marker in addition to color.
 
 ### `[github]`
 
@@ -107,6 +147,7 @@ Optional GitHub activity sidebar, refreshed every 60s when `repo` is set.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `bell_on_mention` | bool | `false` | Ring the terminal bell on `@`-mention in a non-muted channel. |
+| `desktop` | bool | `false` | Show an OS desktop notification on a mention when Marga is unfocused (or the mention is in another channel). Env override: `MARGA_NOTIFY_DESKTOP`. |
 | `muted_channels` | []string | `[]` | Channel names (case-insensitive) for which mentions and the bell are suppressed. |
 
 ### `[logging]`
@@ -164,7 +205,7 @@ read from a `.env` file in the working directory (see [`.env.example`](../.env.e
 | `MARGA_RELAY_URL` | `server.relay_url` | |
 | `MARGA_RELAY_API_KEY` | `server.api_key` | `MARGA_API_KEY` is a legacy alias. |
 | `MARGA_BOT_CLIENT_ID` | `server.bot_client_id` | |
-| `MARGA_WEB_SETUP_URL` | `server.web_setup_url` | |
+| `MARGA_WEB_SETUP_URL` | `server.web_setup_url` | deprecated / unused |
 | `MARGA_AUTH_ENABLED` | `auth.enabled` | `true`/`false`. |
 | `MARGA_AUTH_PROVIDER` | `auth.provider` | |
 | `MARGA_DISCORD_CLIENT_ID` | `auth.discord.client_id` | |
@@ -173,6 +214,7 @@ read from a `.env` file in the working directory (see [`.env.example`](../.env.e
 | `MARGA_THEME` | `ui.theme` | |
 | `MARGA_HISTORY_LIMIT` | `ui.history_limit` | Must parse as a positive int. |
 | `MARGA_IMAGE_PROTOCOL` | `ui.image_protocol` | |
+| `MARGA_NOTIFY_DESKTOP` | `notifications.desktop` | `true`/`false`. |
 | `MARGA_GITHUB_TOKEN` | `github.token` | |
 | `MARGA_GITHUB_REPO` | `github.repo` | |
 | `MARGA_LOG_LEVEL` | `logging.level` | |

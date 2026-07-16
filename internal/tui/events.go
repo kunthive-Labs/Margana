@@ -68,6 +68,9 @@ func (m Model) onMessageEvent(msg model.Message, fromActive bool) (Model, []tea.
 		if m.bellOnMention() {
 			notifCmd = tea.Batch(notifCmd, bellCmd())
 		}
+		if m.desktopNotify() && (!m.termFocused || msg.Channel != m.channel) {
+			notifCmd = tea.Batch(notifCmd, osNotifyCmd(n.Channel, n.Username, n.Content))
+		}
 	}
 
 	if !fromActive || msg.Channel != m.channel {
@@ -115,16 +118,25 @@ func (m Model) onMessageEvent(msg model.Message, fromActive bool) (Model, []tea.
 	return m, batch
 }
 
-func (m Model) onStatusEvent(state network.ConnState, err error) (Model, []tea.Cmd) {
+func (m Model) onStatusEvent(state network.ConnState, err error, retryAt time.Time) (Model, []tea.Cmd) {
 	m.status = state
 	if err != nil {
 		m.addError(fmt.Sprintf("connection: %v", err))
 	}
 	if state == network.StateConnected {
 		m.errors = nil
+		m.reconnectAt = time.Time{}
 		if m.channel != "" {
 			return m, []tea.Cmd{m.subscribeCmd(m.channel)}
 		}
+		return m, nil
+	}
+	// Disconnected / reconnecting: record the projected retry time and start a
+	// 1s ticker (once) so the countdown re-renders.
+	m.reconnectAt = retryAt
+	if !m.reconnectTicking {
+		m.reconnectTicking = true
+		return m, []tea.Cmd{reconnectTickCmd()}
 	}
 	return m, nil
 }

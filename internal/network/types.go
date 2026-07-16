@@ -4,7 +4,11 @@
 // Network; the TUI multiplexes their Event streams.
 package network
 
-import "github.com/kunthive-Labs/Margana/internal/model"
+import (
+	"time"
+
+	"github.com/kunthive-Labs/Margana/internal/model"
+)
 
 // NetworkID is the stable handle for one configured connection ("discord",
 // "matrix"). It namespaces channels, keyring entries, and per-network identity.
@@ -82,6 +86,9 @@ type Event struct {
 	Presence *model.UserPresence
 	State    ConnState
 	Err      error
+	// RetryAt is when the adapter will next attempt to reconnect (set on
+	// reconnecting status events; zero otherwise). The TUI renders a countdown.
+	RetryAt  time.Time
 	Channels []ChannelRef
 	Users    []string
 }

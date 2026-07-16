@@ -79,20 +79,20 @@ retention window and a deletion path to the relay are tracked follow-ups. If
 this is unacceptable for your threat model, self-host the relay or run marga
 send-only (see below).
 
-### One important caveat: web-based setup
+### Onboarding keeps secrets on the machine
 
-The first-run wizard offers two onboarding methods (`internal/setup/wizard.go`):
+The first-run wizard (`internal/setup/wizard.go`) is network-first: you pick
+**Matrix** (works immediately, no relay) or **Discord** (advanced, needs a
+self-hosted relay and a registered Discord app). Whichever you choose, all
+authentication happens locally — Matrix exchanges your password for a token
+stored in the OS keyring, and Discord runs its OAuth flow against endpoints you
+control. **No access token is ever placed in a URL or sent to a web host.**
 
-- **Terminal setup (recommended, default):** everything stays local; your token
-  is used only against Discord and your own relay.
-- **Web browser setup:** marga opens
-  `https://marga.kunthive.com/terminal-setup#token=<access_token>` so the web
-  wizard can finish configuration for you. **In this path your Discord access
-  token is handed to the web setup host** (in the URL fragment).
-
-If you do not want your token to reach `marga.kunthive.com`, use **terminal
-setup**, or point `server.web_setup_url` at your own host
-(`MARGA_WEB_SETUP_URL`). Self-hosters should override it.
+> Historical note: earlier builds offered a "web browser setup" that opened
+> `https://marga.kunthive.com/terminal-setup#token=<access_token>`, handing the
+> Discord access token to a web host in the URL fragment. That path has been
+> **removed**; the `server.web_setup_url` setting is now unused and retained only
+> for backward compatibility.
 
 ## Reducing or removing reliance on the relay
 
@@ -105,8 +105,6 @@ marga is a client; every endpoint is configurable.
   realtime receive are disabled.
 - **Your own Discord app** — register your own OAuth2 application so even login
   goes through credentials you control.
-- **Override web setup** — set `server.web_setup_url` (or use terminal setup) so
-  no token is sent to the public web wizard.
 
 ## Multi-network architecture
 

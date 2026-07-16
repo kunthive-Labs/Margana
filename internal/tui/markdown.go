@@ -408,7 +408,7 @@ func renderInline(text, myUsername string) string {
 			}
 			if j < n && runes[j] == '`' {
 				inner := string(runes[i+1 : j])
-				out.WriteString(lipgloss.NewStyle().Foreground(themeCyan).Background(lipgloss.Color("#1a1a1a")).Render(inner))
+				out.WriteString(lipgloss.NewStyle().Foreground(themeCyan).Background(themeSelectedBg).Render(inner))
 				i = j + 1
 			} else {
 				out.WriteRune(runes[i])

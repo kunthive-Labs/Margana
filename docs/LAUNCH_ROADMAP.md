@@ -84,7 +84,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   both work on macOS/Linux/Windows; README leads with one-line install and a
   demo above the fold.
 
-### Phase 2 — First-run success (onboarding)  ☐
+### Phase 2 — First-run success (onboarding)  ☑
 - **Goal:** A brand-new user reaches a live chat session with zero infrastructure.
 - **Items:** C2 (Matrix-first onboarding), C4 (remove token-in-URL web setup),
   H3 (first-run coach overlay).
@@ -96,7 +96,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   without editing config or standing up a relay; no access token appears in any
   URL; the coach overlay shows exactly once.
 
-### Phase 3 — Daily-driver reliability & retention  ☐
+### Phase 3 — Daily-driver reliability & retention  ☑
 - **Goal:** People keep marga open and come back to it.
 - **Items:** C6 (notifications), H4 (connection/offline affordances),
   H5 (empty/error states).
@@ -105,7 +105,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   connection state and next-retry are always visible; no blank/ambiguous states
   on common paths.
 
-### Phase 4 — Terminal-native polish  ☐
+### Phase 4 — Terminal-native polish  ☑
 - **Goal:** Looks and feels right in *any* terminal, and is accessible.
 - **Items:** H1 (respect terminal bg + `NO_COLOR`), H2 (config-driven themes),
   H6 (accessibility pass).
@@ -115,7 +115,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   disables color; custom palettes load from config; status is legible without
   relying on color alone.
 
-### Phase 5 — Web presence & shareable demo  ☐
+### Phase 5 — Web presence & shareable demo  ☑
 - **Goal:** A shareable page and a demo that never goes stale.
 - **Items:** H7 (GitHub Pages landing/docs), D6 (`vhs`-scripted demo in CI).
 - **Depends on:** Phase 1 (demo asset + install lines exist), Phase 0 (name).
@@ -163,7 +163,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   working binary on macOS/Linux/Windows; README reflects the one-line paths.
 
 ### C2 · Make Matrix the zero-setup onboarding default; reframe Discord as "advanced"
-- **Status:** ☐  ·  **Priority:** P0  ·  **Complexity:** Med  ·  **Phase:** 2
+- **Status:** ☑  ·  **Priority:** P0  ·  **Complexity:** Med  ·  **Phase:** 2
 - **Why:** The wizard opens with *"Connect Marga to your Discord server"* and
   offers Terminal/Web — but Discord needs a self-hosted relay **and** a
   registered Discord app (bundled endpoints were removed; `config.example.toml`
@@ -196,7 +196,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** README shows a looping demo above the fold.
 
 ### C4 · Remove the token-in-URL web-setup path
-- **Status:** ☐  ·  **Priority:** P0  ·  **Complexity:** Med  ·  **Phase:** 2
+- **Status:** ☑  ·  **Priority:** P0  ·  **Complexity:** Med  ·  **Phase:** 2
 - **Why:** `handleChooseMethod` (web option) opens
   `…/terminal-setup#token=<access_token>` — the Discord **access token travels in
   a URL fragment to a web host** (`marga.kunthive.com`). Documented honestly in
@@ -237,7 +237,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   **before** C1 (publishing) to avoid churning users. (Phase 0 before Phase 1.)
 
 ### C6 · Desktop + terminal-bell notifications on mention/DM
-- **Status:** ☐  ·  **Priority:** P1  ·  **Complexity:** Med  ·  **Phase:** 3
+- **Status:** ☑  ·  **Priority:** P1  ·  **Complexity:** Med  ·  **Phase:** 3
 - **Why:** A chat client people return to daily must alert them when pinged while
   backgrounded. Mentions are already tracked (`m.notifications`, `m.unreadCount`)
   but there's no OS/bell notification. Without this, nobody keeps it open — and if
@@ -269,7 +269,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 ## 4. High-impact improvements
 
 ### H1 · Respect terminal background + honor `NO_COLOR`
-- **Status:** ☐  ·  **Priority:** P1  ·  **Complexity:** Low–Med  ·  **Phase:** 4
+- **Status:** ☑  ·  **Priority:** P1  ·  **Complexity:** Low–Med  ·  **Phase:** 4
 - **Why:** Default theme hardcodes `themeBg = #000000` (`internal/tui/styles.go`),
   which fights transparent terminals and breaks on light backgrounds. The
   riced-terminal crowd is your best evangelist base and hates palette overrides.
@@ -281,7 +281,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   terminals are readable; `NO_COLOR` disables color.
 
 ### H2 · Config-driven / custom themes
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Med  ·  **Phase:** 4
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Med  ·  **Phase:** 4
 - **Why:** Themes are hardcoded in Go (`default`, `dracula`, `solarized`).
   Personalization drives attachment and "here's my setup" screenshots → sharing.
 - **Work:** load palettes from config (e.g. `[theme.<name>]` blocks or a themes
@@ -291,7 +291,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** a user-defined palette in config can be selected and applied.
 
 ### H3 · First-run coach overlay in the TUI
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Low  ·  **Phase:** 2
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Low  ·  **Phase:** 2
 - **Why:** After first connect the screen is blank-ish; the status-bar hint is
   easy to miss. A dismissible overlay ("Enter send · Ctrl+B channels · Ctrl+H
   help · `/` commands") turns "now what?" into guided discovery.
@@ -300,7 +300,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** shown once, dismissible, never shown again.
 
 ### H4 · Better connection / offline affordances
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Low–Med  ·  **Phase:** 3
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Low–Med  ·  **Phase:** 3
 - **Why:** Status bar shows connected/disconnected/reconnecting but no reconnect
   countdown or clear offline banner; ambiguity reads as bugs.
 - **Work:** add a reconnect countdown + an explicit offline banner with a retry
@@ -309,7 +309,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** the user always knows connection state and the next retry.
 
 ### H5 · Warmer empty & error states
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Low  ·  **Phase:** 3
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Low  ·  **Phase:** 3
 - **Why:** "no mentions yet" is good — extend the pattern. The main chat empty
   state and connection failures should suggest the next action.
 - **Work:** chat empty state ("No messages yet — say hi, or `/join #general`");
@@ -318,7 +318,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** no blank/ambiguous states remain on the common paths.
 
 ### H6 · Accessibility pass
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Med  ·  **Phase:** 4
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Med  ·  **Phase:** 4
 - **Why:** Status is encoded by color alone; contrast varies by theme; broadens
   reach and signals craft.
 - **Work:** add glyphs/text alongside color for status, verify contrast across
@@ -327,7 +327,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** status is legible without color; behavior documented.
 
 ### H7 · GitHub Pages landing / docs page
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Low–Med  ·  **Phase:** 5
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Low–Med  ·  **Phase:** 5
 - **Why:** The legitimate analog to the brief's "web experience" — one shareable
   page for HN/Product Hunt/socials with the demo + install one-liners + docs.
 - **Work:** simple static page (embed the C3 demo, per-OS install, docs links) via
@@ -398,6 +398,21 @@ web surface and a different audience. Do not reintroduce these here:
 | 2026-07-15 | 0 | C5 (naming) | ☑ | Decided: repo=**Margana** (brand), tool/binary/packages=**marga**. Module path kept (`github.com/kunthive-Labs/Margana`) → no import churn, `go install` intact. Fixed 2 product-name misuses (tui update banner, matrix device name); goreleaser `project_name: marga`. |
 | 2026-07-15 | 0 | C7 (version) | ☑ | `resolveVersion()` added in `cmd/marga/main.go`: ldflags stamp → module build-info fallback (covers `go install @latest`) → `dev`; leading `v` trimmed to match goreleaser. Pre-1.0 stability note added to README. Makefile/goreleaser already stamp `-X main.version`. |
 | 2026-07-15 | 0 | Phase 0 | ☑ | Identity & version foundations complete. To actually emit `0.1.0`, tag `v0.1.0` at the release commit (Phase 1 release step). |
+| 2026-07-16 | 2 | C2 (Matrix-first onboarding) | ☑ | Wizard is network-first (Matrix vs Discord-advanced). New `NeedsOnboarding` gate; `cmd/marga` no longer rejects a brand-new user (Load-fails-with-no-file → onboard with Discord off) and skips pre-wizard Discord OAuth until Discord is chosen. Matrix quick-connect writes a valid `[[networks]]` entry + disables Discord; adapter prompts for the password at Connect. Verified end-to-end against an empty config dir. |
+| 2026-07-16 | 2 | C4 (remove token-in-URL) | ☑ | Deleted the web-setup wizard branch + `fetchWebConfig`/`webSetupConfig` and their tests; no access token ever enters a URL. `server.web_setup_url` kept inert (deprecated) to avoid churn. Docs updated: ARCHITECTURE, SECURITY, CONFIGURATION, OPERATIONS, SELF_HOSTING, config.example.toml. |
+| 2026-07-16 | 2 | H3 (coach overlay) | ☑ | One-time first-run overlay gated by persisted `ui.coach_shown`; dismissed by any key, then saved. Mirrors help-modal styling. |
+| 2026-07-16 | 2 | Phase 2 | ☑ | First-run success complete: a brand-new user picks Matrix, is prompted for credentials, and reaches chat with zero infra; no token in any URL; coach shows once. `go build`/`vet`/`test` green (16 pkgs). Not committed (per request). |
+| 2026-07-16 | 3 | C6 (notifications) | ☑ | OS desktop notification (via `github.com/gen2brain/beeep`, CGo-free) + existing terminal bell, on mention when unfocused or in another channel. Focus tracked via `tea.FocusMsg`/`BlurMsg` (`tea.WithReportFocus()`). Config `notifications.desktop` + `MARGA_NOTIFY_DESKTOP`. |
+| 2026-07-16 | 3 | H4 (connection affordances) | ☑ | Plumbed reconnect timing: `wsclient.StatusChange.RetryIn` → `network.Event.RetryAt` → model `reconnectAt` + 1s `reconnectTickCmd`. Status bar glyph+color-coded with live "reconnecting in Ns" countdown; explicit full-width offline banner with relay/SELF_HOSTING hint. |
+| 2026-07-16 | 3 | H5 (empty/error states) | ☑ | Actionable, status-aware chat empty state; offline banner carries the actionable connect/relay hint. |
+| 2026-07-16 | 3 | Phase 3 | ☑ | Reliability & retention complete. `go build`/`vet`/`test -tags goolm` green (16 pkgs); added tui reliability tests + wsclient RetryIn test. Not committed. |
+| 2026-07-16 | 4 | H1 (terminal bg + NO_COLOR) | ☑ | Palette vars retyped to `lipgloss.TerminalColor`; new `none`/`terminal` theme uses `NoColor{}` bg/fg (inherits terminal) + ANSI-index accents. `NO_COLOR` strips all color (bold/italic kept). Verified via a custom-theme + NO_COLOR binary run. |
+| 2026-07-16 | 4 | H2 (config-driven themes) | ☑ | `Theme` struct + `builtinThemes`/`customThemes`; `[themes.<name>]` blocks (`config.ThemeColors`) load via `tui.RegisterCustomThemes` with per-field fallback to default. Documented in CONFIGURATION.md + config.example.toml. |
+| 2026-07-16 | 4 | H6 (accessibility) | ☑ | Connection state glyphs+words (from H4) read without color; errors-modal selection uses a `>` marker + bold; NO_COLOR honored; accessibility section added to docs. |
+| 2026-07-16 | 4 | Phase 4 | ☑ | Terminal-native polish complete. `go build`/`vet`/`test -tags goolm` green (16 pkgs); added none/custom-theme/NO_COLOR tests. Not committed. |
+| 2026-07-16 | 5 | H7 (landing/docs) | ☑ | Existing GitHub Pages landing kept; added a Docs footer column + nav link (5 docs), og:image/twitter-card/favicon, and an embedded demo GIF. Per-OS install one-liners still await **C1** (Phase 1, out of scope) — the page already states packages aren't published. |
+| 2026-07-16 | 5 | D6 (vhs demo in CI) | ☑ | Added a `MARGA_DEMO` / `--demo` offline demo mode (new `internal/network/demo` scripted adapters, no creds/network) so the demo is reproducible headlessly; `docs/demo.tape` + `.github/workflows/demo.yml` (workflow_dispatch). Rendered `assets/demo.gif` (1200×700) with vhs and embedded it in README + landing. |
+| 2026-07-16 | 5 | Phase 5 | ☑ | Web presence & shareable demo complete for in-scope work: public landing updated + a reproducible demo GIF that CI can regenerate. Remaining gap — per-OS install one-liners — depends on C1 (Phase 1 packaging, out of current scope). `go build`/`vet`/`test -tags goolm` green. Not committed. |
 
 ---
 

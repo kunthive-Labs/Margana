@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/kunthive-Labs/Margana/internal/config"
 	"github.com/kunthive-Labs/Margana/internal/model"
 )
 
@@ -153,5 +154,46 @@ func TestApplyThemeDefaultAndUnknown(t *testing.T) {
 	}
 	if themeAccent != lipgloss.Color("#ffffff") {
 		t.Fatalf("expected default accent for unknown theme, got %q", themeAccent)
+	}
+}
+
+func TestApplyThemeNoneInheritsBackground(t *testing.T) {
+	ApplyTheme("none")
+	if _, ok := themeBg.(lipgloss.NoColor); !ok {
+		t.Fatalf("none theme bg should be NoColor (inherit terminal), got %T", themeBg)
+	}
+	ApplyTheme("terminal") // alias of none
+	if _, ok := themeBg.(lipgloss.NoColor); !ok {
+		t.Fatalf("terminal alias bg should be NoColor, got %T", themeBg)
+	}
+	ApplyTheme("default")
+}
+
+func TestRegisterCustomThemes(t *testing.T) {
+	RegisterCustomThemes(map[string]config.ThemeColors{
+		"nord-test": {Bg: "#2e3440", Accent: "#88c0d0"},
+	})
+	ApplyTheme("nord-test")
+	if themeBg != lipgloss.Color("#2e3440") {
+		t.Errorf("custom bg = %q, want #2e3440", themeBg)
+	}
+	if themeAccent != lipgloss.Color("#88c0d0") {
+		t.Errorf("custom accent = %q, want #88c0d0", themeAccent)
+	}
+	// Unspecified fields fall back per-field to the built-in default.
+	if themeFg != lipgloss.Color("#b3b3b3") {
+		t.Errorf("unspecified fg should fall back to default, got %q", themeFg)
+	}
+	ApplyTheme("default")
+}
+
+func TestNoColorDisablesColor(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	ApplyTheme("dracula") // any theme; NO_COLOR must strip it
+	if _, ok := themeBg.(lipgloss.NoColor); !ok {
+		t.Errorf("NO_COLOR should force NoColor bg, got %T", themeBg)
+	}
+	if _, ok := themeAccent.(lipgloss.NoColor); !ok {
+		t.Errorf("NO_COLOR should force NoColor accent, got %T", themeAccent)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kunthive-Labs/Margana/internal/network"
@@ -86,8 +87,31 @@ func (m Model) View() string {
 		return centerInTerm(m.renderSetupWizard(modalW, modalH), modalW, modalH, m.width, m.height)
 	}
 
+	if m.coachVisible {
+		modalW := m.width * 70 / 100
+		if modalW < 50 {
+			modalW = 50
+		}
+		if modalW > m.width-6 {
+			modalW = m.width - 6
+		}
+		modalH := m.height * 45 / 100
+		if modalH < 12 {
+			modalH = 12
+		}
+		if modalH > m.height-4 {
+			modalH = m.height - 4
+		}
+		return centerInTerm(m.renderCoachModal(modalW, modalH), modalW, modalH, m.width, m.height)
+	}
+
 	statusBar := fitToSize(m.renderStatusBar(), m.width, 1)
-	contentHeight := m.height - 1
+	banner := m.renderOfflineBanner()
+	bannerRows := 0
+	if banner != "" {
+		bannerRows = 1
+	}
+	contentHeight := m.height - 1 - bannerRows
 
 	chWidth := m.channelSidebarWidth()
 	rightWidth := m.rightSidebarWidth()
@@ -123,7 +147,12 @@ func (m Model) View() string {
 	}
 
 	content = fitToSize(content, m.width, contentHeight)
-	full := lipgloss.JoinVertical(lipgloss.Left, statusBar, content)
+	var full string
+	if bannerRows > 0 {
+		full = lipgloss.JoinVertical(lipgloss.Left, statusBar, banner, content)
+	} else {
+		full = lipgloss.JoinVertical(lipgloss.Left, statusBar, content)
+	}
 
 	if m.helpVisible {
 		modalW := m.width * 80 / 100
@@ -167,15 +196,22 @@ func (m Model) View() string {
 }
 
 func (m Model) renderStatusBar() string {
-	connStr := string(m.status)
+	// Connection state gets a glyph + word + color so it reads without relying on
+	// color alone (accessibility) and can show the reconnect countdown.
+	connGlyph, connWord := "●", "connected"
+	connStyle := lipgloss.NewStyle().Foreground(themeCyan)
 	switch m.status {
-	case network.StateConnected:
-		connStr = "connected"
-	case network.StateDisconnected:
-		connStr = "disconnected"
 	case network.StateReconnecting:
-		connStr = "reconnecting"
+		connGlyph, connWord = "◌", "reconnecting"
+		connStyle = lipgloss.NewStyle().Foreground(themeWarn)
+		if s := reconnectSeconds(m.reconnectAt); s > 0 {
+			connWord = fmt.Sprintf("reconnecting in %ds", s)
+		}
+	case network.StateDisconnected:
+		connGlyph, connWord = "○", "offline"
+		connStyle = lipgloss.NewStyle().Foreground(themeErr)
 	}
+	connStr := connStyle.Render(connGlyph + " " + connWord)
 
 	onlineCount := len(m.onlineUsers())
 	serverPart := ""
@@ -205,6 +241,55 @@ func (m Model) renderStatusBar() string {
 
 	bar := leftStr + strings.Repeat(" ", gap) + right
 	return statusBarStyle().Width(m.width).MaxWidth(m.width).MaxHeight(1).Render(bar)
+}
+
+// reconnectSeconds returns the whole seconds until t, or 0 if t is zero/past.
+func reconnectSeconds(t time.Time) int {
+	if t.IsZero() {
+		return 0
+	}
+	d := time.Until(t)
+	if d <= 0 {
+		return 0
+	}
+	return int(d.Round(time.Second) / time.Second)
+}
+
+// renderOfflineBanner returns a full-width banner shown while the active network
+// is not connected, with the reconnect countdown and an actionable hint. It is
+// empty when connected.
+func (m Model) renderOfflineBanner() string {
+	if m.status == network.StateConnected {
+		return ""
+	}
+	var msg string
+	switch m.status {
+	case network.StateReconnecting:
+		if s := reconnectSeconds(m.reconnectAt); s > 0 {
+			msg = fmt.Sprintf("◌ reconnecting in %ds…", s)
+		} else {
+			msg = "◌ reconnecting…"
+		}
+	default:
+		msg = "○ offline — trying to reconnect"
+	}
+	if string(m.active) == "discord" {
+		msg += " · relay unreachable? see docs/SELF_HOSTING.md"
+	}
+	return fitToSize(statusErrorStyle().Width(m.width).MaxWidth(m.width).MaxHeight(1).Render(" "+msg+" "), m.width, 1)
+}
+
+// chatEmptyHint returns an actionable empty-state line for the chat pane, aware
+// of the current connection state.
+func (m Model) chatEmptyHint() string {
+	switch m.status {
+	case network.StateConnected:
+		return fmt.Sprintf("No messages in #%s yet — say hi, or /join another channel", m.channel)
+	case network.StateReconnecting:
+		return "Reconnecting… messages will appear once you're back online"
+	default:
+		return "Offline — connect to load and send messages"
+	}
 }
 
 func (m Model) renderChannels(width, height int) string {
@@ -422,7 +507,7 @@ func (m Model) renderErrors(width, height int) string {
 		err := m.errors[i]
 		ts := err.Timestamp.Local().Format("01-02 15:04:05")
 		msg := err.Message
-		maxMsgW := innerW - len(ts) - 3
+		maxMsgW := innerW - len(ts) - 5
 		if maxMsgW < 10 {
 			maxMsgW = 10
 		}
@@ -434,9 +519,11 @@ func (m Model) renderErrors(width, height int) string {
 		line := fmt.Sprintf("%s  %s", ts, msg)
 		isSelected := i == m.errorScrollIdx
 		if isSelected {
-			line = lipgloss.NewStyle().Foreground(themeAccent).Render(line)
+			// A "> " marker (plus bold) makes the selection legible without relying
+			// on color alone (accessibility / NO_COLOR).
+			line = lipgloss.NewStyle().Foreground(themeAccent).Bold(true).Render("> " + line)
 		} else {
-			line = lipgloss.NewStyle().Foreground(themeFg).Render(line)
+			line = lipgloss.NewStyle().Foreground(themeFg).Render("  " + line)
 		}
 		lines = append(lines, line)
 	}
@@ -518,6 +605,26 @@ func (m Model) renderHelpModal(width, height int) string {
 	boxContent := hintLine + "\n" + content
 	box := renderBorderedBox(panelStyle(), width, height, boxContent)
 
+	return title + "\n" + box
+}
+
+// renderCoachModal is the one-time first-run overlay. It mirrors the help modal's
+// styling and lists the handful of keys a new user needs to get moving. It is
+// gated by Model.coachVisible and dismissed by any key (see handleKey).
+func (m Model) renderCoachModal(width, height int) string {
+	title := panelTitleStyle().Render(" Welcome to Marga ")
+	hint := lipgloss.NewStyle().Foreground(themeDim).Render("press any key to dismiss")
+	intro := lipgloss.NewStyle().Foreground(themeFg).Render("You're connected. Here's how to get around:")
+
+	body := m.helpSection("Get started", width-4, [][2]string{
+		{"enter", "Send a message"},
+		{"ctrl + b", "Toggle the channels sidebar"},
+		{"ctrl + h", "Full help & keybindings"},
+		{"/", "Slash commands — /join, /network, /search"},
+	})
+
+	boxContent := hint + "\n\n" + intro + "\n\n" + body
+	box := renderBorderedBox(panelStyle(), width, height, boxContent)
 	return title + "\n" + box
 }
 
@@ -660,6 +767,7 @@ func (m Model) renderChatArea(width, height int) string {
 		loading:     m.loadingHistory,
 		allLoaded:   m.allHistoryLoaded,
 		myUsername:  m.username,
+		emptyHint:   m.chatEmptyHint(),
 		selectMode:  m.replySelectMode || m.editSelectMode,
 		selectedIdx: m.activeSelectedIndex(),
 	}

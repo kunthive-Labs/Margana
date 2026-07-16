@@ -246,7 +246,7 @@ func (a *Adapter) syncLoop(ctx context.Context) {
 		}
 		// Transient sync failure: report reconnecting and retry after a pause.
 		a.logger.Named("matrix").Warn("sync failed, retrying", "err", err)
-		a.emit(ctx, network.Event{Network: ID, Kind: network.EventStatus, State: network.StateReconnecting, Err: err})
+		a.emit(ctx, network.Event{Network: ID, Kind: network.EventStatus, State: network.StateReconnecting, Err: err, RetryAt: time.Now().Add(5 * time.Second)})
 		select {
 		case <-time.After(5 * time.Second):
 		case <-ctx.Done():

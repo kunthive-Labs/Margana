@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/gen2brain/beeep"
 	"github.com/kunthive-Labs/Margana/internal/model"
 )
 
@@ -276,10 +277,38 @@ func bellCmd() tea.Cmd {
 	}
 }
 
+// desktopNotify reports whether OS desktop notifications are enabled.
+func (m *Model) desktopNotify() bool {
+	return m.setupCfg != nil && m.setupCfg.Notifications.Desktop
+}
+
+// osNotifyCmd shows an OS desktop notification for a mention. It runs on Bubble
+// Tea's command goroutine (off the render path); a missing notification backend
+// is ignored so it never disrupts the UI.
+func osNotifyCmd(channel, user, content string) tea.Cmd {
+	return func() tea.Msg {
+		title := fmt.Sprintf("#%s — @%s", channel, user)
+		body := content
+		if r := []rune(body); len(r) > 200 {
+			body = string(r[:200]) + "…"
+		}
+		_ = beeep.Notify(title, body, "")
+		return nil
+	}
+}
+
 // periodicRefreshCmd schedules a periodic history refresh every 30 seconds.
 func periodicRefreshCmd() tea.Cmd {
 	return tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
 		return periodicRefreshMsg{}
+	})
+}
+
+// reconnectTickCmd fires every second while disconnected so the status bar and
+// offline banner can re-render their reconnect countdown.
+func reconnectTickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return reconnectTickMsg{}
 	})
 }
 
