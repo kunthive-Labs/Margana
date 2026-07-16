@@ -96,7 +96,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   without editing config or standing up a relay; no access token appears in any
   URL; the coach overlay shows exactly once.
 
-### Phase 3 — Daily-driver reliability & retention  ☐
+### Phase 3 — Daily-driver reliability & retention  ☑
 - **Goal:** People keep marga open and come back to it.
 - **Items:** C6 (notifications), H4 (connection/offline affordances),
   H5 (empty/error states).
@@ -237,7 +237,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   **before** C1 (publishing) to avoid churning users. (Phase 0 before Phase 1.)
 
 ### C6 · Desktop + terminal-bell notifications on mention/DM
-- **Status:** ☐  ·  **Priority:** P1  ·  **Complexity:** Med  ·  **Phase:** 3
+- **Status:** ☑  ·  **Priority:** P1  ·  **Complexity:** Med  ·  **Phase:** 3
 - **Why:** A chat client people return to daily must alert them when pinged while
   backgrounded. Mentions are already tracked (`m.notifications`, `m.unreadCount`)
   but there's no OS/bell notification. Without this, nobody keeps it open — and if
@@ -300,7 +300,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** shown once, dismissible, never shown again.
 
 ### H4 · Better connection / offline affordances
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Low–Med  ·  **Phase:** 3
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Low–Med  ·  **Phase:** 3
 - **Why:** Status bar shows connected/disconnected/reconnecting but no reconnect
   countdown or clear offline banner; ambiguity reads as bugs.
 - **Work:** add a reconnect countdown + an explicit offline banner with a retry
@@ -309,7 +309,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** the user always knows connection state and the next retry.
 
 ### H5 · Warmer empty & error states
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Low  ·  **Phase:** 3
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Low  ·  **Phase:** 3
 - **Why:** "no mentions yet" is good — extend the pattern. The main chat empty
   state and connection failures should suggest the next action.
 - **Work:** chat empty state ("No messages yet — say hi, or `/join #general`");
@@ -402,6 +402,10 @@ web surface and a different audience. Do not reintroduce these here:
 | 2026-07-16 | 2 | C4 (remove token-in-URL) | ☑ | Deleted the web-setup wizard branch + `fetchWebConfig`/`webSetupConfig` and their tests; no access token ever enters a URL. `server.web_setup_url` kept inert (deprecated) to avoid churn. Docs updated: ARCHITECTURE, SECURITY, CONFIGURATION, OPERATIONS, SELF_HOSTING, config.example.toml. |
 | 2026-07-16 | 2 | H3 (coach overlay) | ☑ | One-time first-run overlay gated by persisted `ui.coach_shown`; dismissed by any key, then saved. Mirrors help-modal styling. |
 | 2026-07-16 | 2 | Phase 2 | ☑ | First-run success complete: a brand-new user picks Matrix, is prompted for credentials, and reaches chat with zero infra; no token in any URL; coach shows once. `go build`/`vet`/`test` green (16 pkgs). Not committed (per request). |
+| 2026-07-16 | 3 | C6 (notifications) | ☑ | OS desktop notification (via `github.com/gen2brain/beeep`, CGo-free) + existing terminal bell, on mention when unfocused or in another channel. Focus tracked via `tea.FocusMsg`/`BlurMsg` (`tea.WithReportFocus()`). Config `notifications.desktop` + `MARGA_NOTIFY_DESKTOP`. |
+| 2026-07-16 | 3 | H4 (connection affordances) | ☑ | Plumbed reconnect timing: `wsclient.StatusChange.RetryIn` → `network.Event.RetryAt` → model `reconnectAt` + 1s `reconnectTickCmd`. Status bar glyph+color-coded with live "reconnecting in Ns" countdown; explicit full-width offline banner with relay/SELF_HOSTING hint. |
+| 2026-07-16 | 3 | H5 (empty/error states) | ☑ | Actionable, status-aware chat empty state; offline banner carries the actionable connect/relay hint. |
+| 2026-07-16 | 3 | Phase 3 | ☑ | Reliability & retention complete. `go build`/`vet`/`test -tags goolm` green (16 pkgs); added tui reliability tests + wsclient RetryIn test. Not committed. |
 
 ---
 
