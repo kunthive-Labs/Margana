@@ -84,7 +84,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   both work on macOS/Linux/Windows; README leads with one-line install and a
   demo above the fold.
 
-### Phase 2 — First-run success (onboarding)  ☐
+### Phase 2 — First-run success (onboarding)  ☑
 - **Goal:** A brand-new user reaches a live chat session with zero infrastructure.
 - **Items:** C2 (Matrix-first onboarding), C4 (remove token-in-URL web setup),
   H3 (first-run coach overlay).
@@ -163,7 +163,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
   working binary on macOS/Linux/Windows; README reflects the one-line paths.
 
 ### C2 · Make Matrix the zero-setup onboarding default; reframe Discord as "advanced"
-- **Status:** ☐  ·  **Priority:** P0  ·  **Complexity:** Med  ·  **Phase:** 2
+- **Status:** ☑  ·  **Priority:** P0  ·  **Complexity:** Med  ·  **Phase:** 2
 - **Why:** The wizard opens with *"Connect Marga to your Discord server"* and
   offers Terminal/Web — but Discord needs a self-hosted relay **and** a
   registered Discord app (bundled endpoints were removed; `config.example.toml`
@@ -196,7 +196,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** README shows a looping demo above the fold.
 
 ### C4 · Remove the token-in-URL web-setup path
-- **Status:** ☐  ·  **Priority:** P0  ·  **Complexity:** Med  ·  **Phase:** 2
+- **Status:** ☑  ·  **Priority:** P0  ·  **Complexity:** Med  ·  **Phase:** 2
 - **Why:** `handleChooseMethod` (web option) opens
   `…/terminal-setup#token=<access_token>` — the Discord **access token travels in
   a URL fragment to a web host** (`marga.kunthive.com`). Documented honestly in
@@ -291,7 +291,7 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Done when:** a user-defined palette in config can be selected and applied.
 
 ### H3 · First-run coach overlay in the TUI
-- **Status:** ☐  ·  **Priority:** P2  ·  **Complexity:** Low  ·  **Phase:** 2
+- **Status:** ☑  ·  **Priority:** P2  ·  **Complexity:** Low  ·  **Phase:** 2
 - **Why:** After first connect the screen is blank-ish; the status-bar hint is
   easy to miss. A dismissible overlay ("Enter send · Ctrl+B channels · Ctrl+H
   help · `/` commands") turns "now what?" into guided discovery.
@@ -398,6 +398,10 @@ web surface and a different audience. Do not reintroduce these here:
 | 2026-07-15 | 0 | C5 (naming) | ☑ | Decided: repo=**Margana** (brand), tool/binary/packages=**marga**. Module path kept (`github.com/kunthive-Labs/Margana`) → no import churn, `go install` intact. Fixed 2 product-name misuses (tui update banner, matrix device name); goreleaser `project_name: marga`. |
 | 2026-07-15 | 0 | C7 (version) | ☑ | `resolveVersion()` added in `cmd/marga/main.go`: ldflags stamp → module build-info fallback (covers `go install @latest`) → `dev`; leading `v` trimmed to match goreleaser. Pre-1.0 stability note added to README. Makefile/goreleaser already stamp `-X main.version`. |
 | 2026-07-15 | 0 | Phase 0 | ☑ | Identity & version foundations complete. To actually emit `0.1.0`, tag `v0.1.0` at the release commit (Phase 1 release step). |
+| 2026-07-16 | 2 | C2 (Matrix-first onboarding) | ☑ | Wizard is network-first (Matrix vs Discord-advanced). New `NeedsOnboarding` gate; `cmd/marga` no longer rejects a brand-new user (Load-fails-with-no-file → onboard with Discord off) and skips pre-wizard Discord OAuth until Discord is chosen. Matrix quick-connect writes a valid `[[networks]]` entry + disables Discord; adapter prompts for the password at Connect. Verified end-to-end against an empty config dir. |
+| 2026-07-16 | 2 | C4 (remove token-in-URL) | ☑ | Deleted the web-setup wizard branch + `fetchWebConfig`/`webSetupConfig` and their tests; no access token ever enters a URL. `server.web_setup_url` kept inert (deprecated) to avoid churn. Docs updated: ARCHITECTURE, SECURITY, CONFIGURATION, OPERATIONS, SELF_HOSTING, config.example.toml. |
+| 2026-07-16 | 2 | H3 (coach overlay) | ☑ | One-time first-run overlay gated by persisted `ui.coach_shown`; dismissed by any key, then saved. Mirrors help-modal styling. |
+| 2026-07-16 | 2 | Phase 2 | ☑ | First-run success complete: a brand-new user picks Matrix, is prompted for credentials, and reaches chat with zero infra; no token in any URL; coach shows once. `go build`/`vet`/`test` green (16 pkgs). Not committed (per request). |
 
 ---
 
