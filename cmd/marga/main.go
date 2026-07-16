@@ -343,6 +343,7 @@ func main() {
 	registry.Register(commands.NewGlobalCmd(cfg, configPath, cfg.Server.RelayURL, cfg.Server.APIKey))
 
 	tui.InitImageProtocol(cfg.UI.ImageProtocol)
+	tui.RegisterCustomThemes(cfg.Themes)
 	tui.ApplyTheme(cfg.UI.Theme)
 
 	model := tui.New(adapters, active, store, registry,
