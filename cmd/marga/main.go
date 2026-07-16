@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"syscall"
@@ -26,6 +27,7 @@ import (
 	"github.com/kunthive-Labs/Margana/internal/guilds"
 	"github.com/kunthive-Labs/Margana/internal/logging"
 	"github.com/kunthive-Labs/Margana/internal/network"
+	"github.com/kunthive-Labs/Margana/internal/network/demo"
 	"github.com/kunthive-Labs/Margana/internal/network/discordrelay"
 	"github.com/kunthive-Labs/Margana/internal/network/matrix"
 	"github.com/kunthive-Labs/Margana/internal/setup"
@@ -106,6 +108,7 @@ type cliFlags struct {
 	version  bool
 	help     bool
 	debug    bool
+	demo     bool
 	logFile  string
 	logLevel string
 }
@@ -124,6 +127,7 @@ func parseFlags(args []string) (cliFlags, error) {
 	fs.BoolVar(&f.help, "help", false, "print usage and exit")
 	fs.BoolVar(&f.help, "h", false, "print usage and exit (shorthand)")
 	fs.BoolVar(&f.debug, "debug", false, "enable debug logging to the default log file")
+	fs.BoolVar(&f.demo, "demo", false, "run a scripted offline demo (no config or network needed)")
 	fs.StringVar(&f.logFile, "log-file", "", "write logs to this file")
 	fs.StringVar(&f.logLevel, "log-level", "", "log level: debug, info, warn, error")
 	fs.StringVar(&configPath, "config", "", "path to config file")
@@ -141,6 +145,7 @@ Usage:
 Flags:
   -c, --config PATH    path to config file (default: platform config dir)
   -s, --setup          force the interactive setup wizard
+      --demo           run a scripted offline demo (no config or network needed)
       --debug          enable debug logging to the default log file
       --log-file PATH   write logs to PATH (enables logging)
       --log-level LVL   log level: debug, info, warn, error (default: info)
@@ -205,6 +210,10 @@ func main() {
 	}
 	if flags.version {
 		fmt.Printf("marga %s\n", version)
+		return
+	}
+	if flags.demo || os.Getenv("MARGA_DEMO") != "" {
+		runDemo(version)
 		return
 	}
 
@@ -506,6 +515,69 @@ func runSetupRestart(configPath string) {
 
 	execPath, _ := os.Executable()
 	_ = syscall.Exec(execPath, os.Args, os.Environ())
+}
+
+// runDemo launches Marga against scripted, offline demo networks — no config,
+// credentials, or connectivity required. Used by `marga --demo` / MARGA_DEMO=1
+// and by the vhs recording (docs/demo.tape) so the demo GIF can be generated in
+// CI. It uses a throwaway history store and never touches the user's config.
+func runDemo(version string) {
+	dbPath := filepath.Join(os.TempDir(), "marga-demo.db")
+	_ = os.Remove(dbPath)
+	store, err := db.New(dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s demo db: %v\n", cAccent("✗"), err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	cfg := config.Default()
+	cfg.General.Username = "you"
+	cfg.General.Channel = "general"
+	cfg.General.GuildName = "Demo"
+	cfg.UI.CoachShown = true // skip the first-run overlay in the scripted demo
+
+	adapters := demo.Adapters()
+	active := adapters[0].ID()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, a := range adapters {
+		_ = a.Connect(ctx)
+	}
+
+	registry := commands.NewRegistry()
+	registry.Register(commands.NewHelpCmd(registry))
+	registry.Register(commands.NewJoinCmd())
+	registry.Register(commands.NewNetworkCmd())
+	registry.Register(commands.NewHistoryCmd())
+	registry.Register(commands.NewSearchCmd(store))
+	registry.Register(commands.NewStatusCmd())
+	registry.Register(commands.NewClearMentionsCmd())
+	registry.Register(commands.NewQuitCmd())
+
+	tui.ApplyTheme(cfg.UI.Theme)
+	model := tui.New(adapters, active, store, registry,
+		cfg.General.Channel, cfg.General.Username, "", "", "", cfg.General.GuildName,
+		nil, "", "", "", cfg, version,
+	)
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus())
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		for _, a := range adapters {
+			_ = a.Disconnect()
+		}
+		cancel()
+		p.Quit()
+	}()
+
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s %v\n", cAccent("✗"), err)
+		os.Exit(1)
+	}
 }
 
 func runServerPrompt(configPath string) {
