@@ -17,6 +17,7 @@ type ViewportModel struct {
 	loading    bool
 	allLoaded  bool
 	myUsername string
+	emptyHint  string
 
 	selectMode  bool
 	selectedIdx int
@@ -77,12 +78,16 @@ func (v *ViewportModel) View() string {
 	total := len(v.messages)
 
 	if total == 0 {
+		hint := v.emptyHint
+		if hint == "" {
+			hint = "No messages yet — say hi, or /join #channel"
+		}
 		return lipgloss.NewStyle().
 			Width(v.width).
 			Height(v.height).
 			Align(lipgloss.Center, lipgloss.Center).
 			Foreground(themeDim).
-			Render("no messages yet...")
+			Render(hint)
 	}
 
 	end := total - v.offset

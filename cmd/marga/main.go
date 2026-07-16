@@ -356,7 +356,7 @@ func main() {
 	if cfg.Github.Repo != "" {
 		model = model.WithGithub(cfg.Github.Repo, cfg.Github.Token)
 	}
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus())
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

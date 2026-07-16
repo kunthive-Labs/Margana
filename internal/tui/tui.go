@@ -66,6 +66,8 @@ type trackedError struct {
 
 type periodicRefreshMsg struct{}
 
+type reconnectTickMsg struct{}
+
 type Model struct {
 	width  int
 	height int
@@ -103,6 +105,14 @@ type Model struct {
 	sentHashes  map[string]time.Time
 	presences   map[string]model.UserPresence
 	myStatus    string
+
+	// termFocused tracks terminal focus (tea.FocusMsg/BlurMsg) so desktop
+	// notifications fire only when Marga is backgrounded. reconnectAt is the
+	// projected next-reconnect time for the status-bar / offline-banner
+	// countdown; reconnectTicking guards the 1s re-render ticker.
+	termFocused      bool
+	reconnectAt      time.Time
+	reconnectTicking bool
 
 	terminalOnline []string
 
@@ -203,6 +213,7 @@ func New(adapters []network.Network, active network.NetworkID, store *db.Store, 
 		log:                log.New(io.Discard, "", 0),
 		version:            version,
 		coachVisible:       setupCfg != nil && !setupCfg.UI.CoachShown,
+		termFocused:        true,
 	}
 }
 
@@ -341,7 +352,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case network.EventStatus:
 			// Status reflects whichever network most recently changed state.
-			m, cmds = m.onStatusEvent(ev.State, ev.Err)
+			m, cmds = m.onStatusEvent(ev.State, ev.Err, ev.RetryAt)
 		case network.EventTyping:
 			// Typing and presence are scoped to the visible channel, so only the
 			// active network's indicators are applied.
@@ -361,6 +372,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, m.listenNetwork(ev.Network))
 		return m, tea.Batch(cmds...)
+
+	case tea.FocusMsg:
+		m.termFocused = true
+		return m, nil
+
+	case tea.BlurMsg:
+		m.termFocused = false
+		return m, nil
+
+	case reconnectTickMsg:
+		// While not connected, keep re-rendering so the reconnect countdown
+		// updates; stop the ticker once reconnected.
+		if m.status != network.StateConnected {
+			return m, reconnectTickCmd()
+		}
+		m.reconnectTicking = false
+		return m, nil
 
 	case typingTickMsg:
 		now := time.Now()
