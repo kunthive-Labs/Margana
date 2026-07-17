@@ -11,7 +11,16 @@ import (
 	"testing"
 
 	"github.com/kunthive-Labs/Margana/internal/config"
+	"github.com/zalando/go-keyring"
 )
+
+// TestMain mocks the OS keyring so keyring-backed tests are hermetic: headless
+// CI runners (Linux) have no keyring backend, which otherwise makes token
+// round-trips return empty. Mirrors internal/network/credstore's tests.
+func TestMain(m *testing.M) {
+	keyring.MockInit()
+	os.Exit(m.Run())
+}
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 

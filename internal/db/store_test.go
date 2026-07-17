@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -667,6 +668,9 @@ func TestDefaultDBPath(t *testing.T) {
 }
 
 func TestDefaultDBPathWithXDG(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("XDG_DATA_HOME is not used on Windows (LOCALAPPDATA is)")
+	}
 	os.Setenv("XDG_DATA_HOME", "/tmp/xdg-test-marga")
 	defer os.Unsetenv("XDG_DATA_HOME")
 
