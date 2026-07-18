@@ -23,7 +23,7 @@ func newFakeAdapter(id network.NetworkID) *fakeAdapter {
 
 func (f *fakeAdapter) ID() network.NetworkID { return f.id }
 func (f *fakeAdapter) Capabilities() network.Capabilities {
-	return network.Capabilities{Edit: true, FileUpload: true, Typing: true, Presence: true, History: true, ServerList: true}
+	return network.Capabilities{Edit: true, FileUpload: true, Typing: true, Presence: true, History: true, ServerList: true, Reactions: true}
 }
 func (f *fakeAdapter) Connect(context.Context) error { return nil }
 func (f *fakeAdapter) Disconnect() error             { return nil }
@@ -46,6 +46,7 @@ func (f *fakeAdapter) SendFile(context.Context, network.ChannelRef, string, stri
 	return "", nil
 }
 func (f *fakeAdapter) Edit(context.Context, network.ChannelRef, string, string) error { return nil }
+func (f *fakeAdapter) React(network.ChannelRef, string, string) error                 { return nil }
 func (f *fakeAdapter) SetStatus(string) error                                         { return nil }
 func (f *fakeAdapter) Events() <-chan network.Event                                   { return f.events }
 

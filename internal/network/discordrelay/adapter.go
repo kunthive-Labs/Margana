@@ -6,6 +6,7 @@ package discordrelay
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 
@@ -149,6 +150,12 @@ func (a *Adapter) SendFile(ctx context.Context, ref network.ChannelRef, path, co
 
 func (a *Adapter) Edit(ctx context.Context, ref network.ChannelRef, messageID, content string) error {
 	return a.sender.Edit(messageID, ref.ID, content)
+}
+
+// React is unsupported: the relay does not yet emit or accept reaction events,
+// so Capabilities().Reactions stays false and this is an explicit no-op error.
+func (a *Adapter) React(ref network.ChannelRef, messageID, emoji string) error {
+	return errors.New("discord: reactions not supported by the relay")
 }
 
 func (a *Adapter) SetStatus(status string) error {

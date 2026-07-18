@@ -164,6 +164,11 @@ func (a *Adapter) Edit(ctx context.Context, ref network.ChannelRef, messageID, c
 	return nil
 }
 
+// React is unsupported by the scripted demo (Capabilities().Reactions == false).
+func (a *Adapter) React(ref network.ChannelRef, messageID, emoji string) error {
+	return fmt.Errorf("demo: reactions not supported")
+}
+
 func (a *Adapter) SetStatus(status string) error { return nil }
 
 func (a *Adapter) Events() <-chan network.Event { return a.events }
