@@ -76,13 +76,18 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Phase done when:** one name used everywhere; `go install <path>@latest`
   builds; `marga --version` prints real semver; README states pre-1.0 stability.
 
-### Phase 1 — Discoverable & installable  ☐
+### Phase 1 — Discoverable & installable  ◐ (release-ready; publish pending)
 - **Goal:** A stranger can find the project and install it in one line.
-- **Items:** C3 (demo GIF/asciinema), C1 (publish binaries & packages).
+- **Items:** C3 (demo GIF/asciinema) ☑, C1 (publish binaries & packages) ◐.
 - **Depends on:** Phase 0 (name/version stable before cutting a release).
 - **Phase done when:** `brew install …/marga` **and** a GitHub Releases download
   both work on macOS/Linux/Windows; README leads with one-line install and a
   demo above the fold.
+- **Status:** the release pipeline is validated end-to-end (`goreleaser check`
+  passes; snapshot build produces a working binary) and the README leads with
+  one-line installs; C3 demo already ships above the fold. **Remaining is the
+  publish action only** — create `homebrew-tap` + `scoop-bucket`, set the
+  `GH_PAT` secret, and push a `v0.1.0` tag. Full runbook: `docs/RELEASING.md`.
 
 ### Phase 2 — First-run success (onboarding)  ☑
 - **Goal:** A brand-new user reaches a live chat session with zero infrastructure.
@@ -122,14 +127,14 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 - **Phase done when:** a public URL shows the demo + per-OS install; the demo
   regenerates automatically on release.
 
-### Phase 6 — Delight / wow  ☐
+### Phase 6 — Delight / wow  ☑
 - **Goal:** Differentiators people screenshot and recommend.
 - **Items (suggested order):** D2 (command palette), D4 (unread badges +
   quick-switcher), D1 (rich rendering), D5 (ambient panels), D3 (reactions/threads).
 - **Depends on:** stable fundamentals (Phases 0–4).
 - **Phase done when:** each item's "done when" in §5 is met.
 
-### Phase 7 — Platform & long-term  ☐
+### Phase 7 — Platform & long-term  ☑
 - **Goal:** Make marga irreplaceable.
 - **Items:** L1 (more networks), L2 (self-hostable relay + retention/deletion),
   L3 (Matrix device verification UI), L4 (plugin/scripting surface).
@@ -141,7 +146,15 @@ launch-critical path**; 4–5 polish the launch splash; 6–7 are post-launch.
 ## 3. Critical — must-have before calling it launch-ready
 
 ### C1 · Publish pre-built binaries & packages
-- **Status:** ☐  ·  **Priority:** P0  ·  **Complexity:** Low  ·  **Phase:** 1
+- **Status:** ◐ (release-ready; publish is the user's step)  ·  **Priority:** P0  ·  **Complexity:** Low  ·  **Phase:** 1
+- **Progress (2026-07-18):** `.github/workflows/release.yml` verified (runs
+  goreleaser on `v*` tags with `GH_PAT`/`AUR_KEY`). `.goreleaser.yml`
+  modernized to v2 (fixed 4 deprecations; `brews`→`homebrew_casks`) and
+  validated (`goreleaser check` passes; `goreleaser build --snapshot` yields a
+  working `marga`). nix/AUR deferred via `skip_upload: "true"` so the first tag
+  won't fail on missing infra. README **Install** now leads with
+  brew/scoop/Releases/packages. Added `docs/RELEASING.md` runbook. **Left to do
+  (owner):** create `homebrew-tap` + `scoop-bucket`, add `GH_PAT`, push `v0.1.0`.
 - **Why:** README's primary install is `git clone && make build` needing Go
   1.25+ — a wall for non-Go users. `.goreleaser.yml` already defines
   brew/scoop/nix/aur/deb/rpm/apk targets, but nothing is published. Install
@@ -413,6 +426,18 @@ web surface and a different audience. Do not reintroduce these here:
 | 2026-07-16 | 5 | H7 (landing/docs) | ☑ | Existing GitHub Pages landing kept; added a Docs footer column + nav link (5 docs), og:image/twitter-card/favicon, and an embedded demo GIF. Per-OS install one-liners still await **C1** (Phase 1, out of scope) — the page already states packages aren't published. |
 | 2026-07-16 | 5 | D6 (vhs demo in CI) | ☑ | Added a `MARGA_DEMO` / `--demo` offline demo mode (new `internal/network/demo` scripted adapters, no creds/network) so the demo is reproducible headlessly; `docs/demo.tape` + `.github/workflows/demo.yml` (workflow_dispatch). Rendered `assets/demo.gif` (1200×700) with vhs and embedded it in README + landing. |
 | 2026-07-16 | 5 | Phase 5 | ☑ | Web presence & shareable demo complete for in-scope work: public landing updated + a reproducible demo GIF that CI can regenerate. Remaining gap — per-OS install one-liners — depends on C1 (Phase 1 packaging, out of current scope). `go build`/`vet`/`test -tags goolm` green. Not committed. |
+| 2026-07-18 | 1 | C1 (packaging) | ◐ | Release pipeline made **release-ready** (not yet published — publish is the owner's step). `.goreleaser.yml` modernized to v2: fixed 4 deprecations (`snapshot.version_template`, `archives.ids`, `format_overrides.formats`, `brews`→`homebrew_casks` cask w/ Gatekeeper-quarantine hook) and validated via `goreleaser check` + a `--snapshot` build producing a working `marga`. nix/AUR gated `skip_upload:"true"` so a first `v*` tag won't fail on missing infra. `release.yml` verified. README **Install** rewritten to lead with brew/scoop/Releases/Linux packages, source demoted. New `docs/RELEASING.md` runbook. Owner's remaining step: create `homebrew-tap`+`scoop-bucket`, add `GH_PAT`, push `v0.1.0`. |
+| 2026-07-18 | 6 | D2 (command palette) | ☑ | Ctrl+K fuzzy palette over channels/commands/networks; pure-Go matcher (`internal/tui/fuzzy.go`), reuses the modal-overlay pattern. Repurposed Ctrl+K from readline kill-line (Ctrl+U/W remain). |
+| 2026-07-18 | 6 | D4 (unread badges + quick-switcher) | ☑ | Network-qualified per-channel unread/mention maps; sidebar `@N`/`●N` badges (glyphs read under NO_COLOR) + status-bar per-network rollup; Alt+1..9 quick-switch. |
+| 2026-07-18 | 6 | D1 (rich rendering) | ☑ | Clickable OSC 8 hyperlinks + `[label](url)` links atop the existing syntax-highlighted code blocks; escapes are zero-width to lipgloss.Width (width-safe, guarded by a test). Inline-image-in-message-text deferred (attachment images already render). |
+| 2026-07-18 | 6 | D5 (ambient panels) | ☑ | Generalized the hardcoded GitHub sidebar into configurable `[[panels]]` (github/rss/ci) via a `internal/tui/panels` Source abstraction; legacy `[github]` block synthesized for back-compat. |
+| 2026-07-18 | 6 | D3 (reactions + threads) | ☑ | Matrix emoji reactions (native `SendReaction`) + a thread *indicator*; `/react`. Caveats: live-view only (deltas to unloaded channels dropped); Matrix un-react via redaction not mapped; Discord gated off (relay doesn't emit them). |
+| 2026-07-18 | 6 | Phase 6 | ☑ | Delight complete on `feat/phase-6-delight`. `build`/`vet`/`test -tags goolm` green; gofmt clean. Built partly via parallel worktree agents, integrated with a green build verified per merge. Not pushed. |
+| 2026-07-18 | 7 | L1 (IRC adapter) | ☑ | New `internal/network/irc` over pure-Go `girc` v1.1.1; wizard entry + `[[networks]] type="irc"` config + main wiring. Honest Capabilities (no history/edit/reactions). Offline tests via girc MockConnect. |
+| 2026-07-18 | 7 | L2 (self-hostable relay) | ☑ | Reference relay `cmd/relay`+`internal/relay` (Dockerfile + `docker compose up`) implementing the documented wire contract **plus** a retention window and a delete-my-data endpoint; contract tests drive the real client packages. The production Discord *gateway* backend stays in the external relay repo (stub marks the boundary). |
+| 2026-07-18 | 7 | L3 (Matrix verification) | ☑ | Interactive SAS emoji device-verification modal via mautrix `verificationhelper` (`internal/network/matrix/verification.go` + a neutral `Verifier` interface + TUI modal + `/verify`). Caveat: SAS-only MVP; cross-signing bootstrap out of scope; live E2E needs two devices (unit-tested via synthetic events). |
+| 2026-07-18 | 7 | L4 (plugin surface) | ☑ | Lua plugins (`internal/plugin`, pure-Go `gopher-lua` v1.1.2): user-defined `marga.command`/`keybind`/`on_message` bots, sandboxed (no os/io/require), context-timeout, effects applied on the UI loop. `[plugins]` + `[[plugins.entries]]` config; `docs/PLUGINS.md` + example `roll.lua`. Note: plugin commands share the registry namespace with built-ins (could add collision guards later). |
+| 2026-07-18 | 7 | Phase 7 | ☑ | Platform complete on `feat/phase-7-platform` (stacked on phase-6). `build`/`vet`/`test -tags goolm` green (21 pkgs), gofmt clean, `go mod tidy` a no-op. Built via parallel worktree agents, integrated with conflict resolution + a green build per merge. Not pushed. |
 
 ---
 
