@@ -40,6 +40,11 @@ type Network interface {
 	SendFile(ctx context.Context, ref ChannelRef, path, content string) (string, error)
 	Edit(ctx context.Context, ref ChannelRef, messageID, content string) error
 
+	// React adds an emoji reaction to messageID. Adapters that do not support
+	// reactions (Capabilities().Reactions == false) return a "not supported"
+	// error. Like SetStatus, it manages its own context internally.
+	React(ref ChannelRef, messageID, emoji string) error
+
 	// SetStatus broadcasts presence (no-op if !Capabilities().Presence).
 	SetStatus(status string) error
 
@@ -52,4 +57,20 @@ type Network interface {
 // Adapters with a live event stream (Matrix) do not implement it.
 type SinceFetcher interface {
 	FetchSince(ctx context.Context, ref ChannelRef, since time.Time) ([]model.Message, error)
+}
+
+// Verifier is an optional capability for adapters that support interactive
+// device verification via a short authentication string (Matrix SAS). Progress
+// is reported out-of-band as EventVerification events on Events(); the TUI
+// renders the emoji-compare modal and calls back here when the user confirms or
+// cancels. Only the Matrix adapter implements this today.
+type Verifier interface {
+	// StartVerification begins verifying another user's device(s). The user is
+	// a network-native id (Matrix MXID).
+	StartVerification(userID string) error
+	// ConfirmSAS signals that the local user confirmed the short authentication
+	// string matches the other device, for the given transaction.
+	ConfirmSAS(txnID string) error
+	// CancelVerification aborts the transaction (user rejected or dismissed).
+	CancelVerification(txnID string) error
 }

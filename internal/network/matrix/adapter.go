@@ -20,6 +20,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto/cryptohelper"
+	"maunium.net/go/mautrix/crypto/verificationhelper"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -47,6 +48,14 @@ type Adapter struct {
 	// crypto is the Olm machine for end-to-end encryption; nil when E2EE could
 	// not be initialized (encrypted rooms then stay undecrypted).
 	crypto *cryptohelper.CryptoHelper
+
+	// verifier drives interactive SAS device verification; nil when crypto is
+	// unavailable. Backed by mautrix's verificationhelper.
+	verifier *verificationhelper.VerificationHelper
+
+	// ctx is the connection-lifetime context, used for verification API calls
+	// triggered outside the sync loop (from the TUI).
+	ctx context.Context
 
 	// password holds a credential gathered from the environment or an
 	// interactive prompt, used once during login and then cleared.
@@ -101,7 +110,7 @@ func (a *Adapter) Capabilities() network.Capabilities {
 		Presence:   true,
 		History:    true,
 		ServerList: true, // homeserver + joined spaces are surfaced as servers
-		Reactions:  false,
+		Reactions:  true, // m.reaction events in/out via SendReaction
 		Encryption: true, // E2EE rooms are decrypted/encrypted when crypto inits
 	}
 }
@@ -147,6 +156,7 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	}
 
 	a.client = client
+	a.ctx = ctx
 	a.registerHandlers()
 
 	// Enable end-to-end encryption. On failure, degrade gracefully: connect
@@ -156,10 +166,16 @@ func (a *Adapter) Connect(ctx context.Context) error {
 		a.logger.Named("matrix").Warn("end-to-end encryption unavailable", "err", err)
 	} else {
 		a.crypto = helper
+		// Interactive SAS device verification rides on top of crypto. Degrade
+		// silently if it can't be initialized (encryption still works).
+		if err := a.setupVerification(ctx); err != nil {
+			a.logger.Named("matrix").Warn("device verification unavailable", "err", err)
+		}
 	}
 
 	a.logger.Named("matrix").Info("connected",
-		"homeserver", a.homeserver, "user_id", a.userID, "encryption", a.crypto != nil)
+		"homeserver", a.homeserver, "user_id", a.userID,
+		"encryption", a.crypto != nil, "verification", a.verifier != nil)
 
 	syncCtx, cancel := context.WithCancel(ctx)
 	a.cancel = cancel
@@ -261,6 +277,7 @@ func (a *Adapter) registerHandlers() {
 		return
 	}
 	syncer.OnEventType(event.EventMessage, a.onRoomMessage)
+	syncer.OnEventType(event.EventReaction, a.onReaction)
 	syncer.OnEventType(event.EphemeralEventTyping, a.onTyping)
 }
 
@@ -269,6 +286,42 @@ func (a *Adapter) onRoomMessage(ctx context.Context, evt *event.Event) {
 	// our own echo).
 	if msg := a.eventToMessage(evt); msg != nil {
 		a.emit(ctx, network.Event{Network: ID, Kind: network.EventMessage, Message: msg})
+	}
+}
+
+// onReaction turns an m.reaction annotation into a reaction delta that rides the
+// normal message-event path: EventType "reaction_add" carrying the target
+// event id (as Message.ID) and the emoji (as Content). The reactor's identity
+// is set so the TUI can tell whether it is the local user's own reaction.
+func (a *Adapter) onReaction(ctx context.Context, evt *event.Event) {
+	if msg := a.reactionToMessage(evt); msg != nil {
+		a.emit(ctx, network.Event{Network: ID, Kind: network.EventMessage, Message: msg})
+	}
+}
+
+// reactionToMessage maps an m.reaction event to a reaction-delta model.Message,
+// or returns nil if the event is not a well-formed annotation. Split out from
+// onReaction so it can be unit-tested with synthetic events (no live server).
+func (a *Adapter) reactionToMessage(evt *event.Event) *model.Message {
+	content, ok := evt.Content.Parsed.(*event.ReactionEventContent)
+	if !ok {
+		return nil
+	}
+	rel := content.RelatesTo
+	targetID := rel.GetAnnotationID().String()
+	emoji := rel.GetAnnotationKey()
+	if targetID == "" || emoji == "" {
+		return nil
+	}
+	return &model.Message{
+		Network:   string(ID),
+		EventType: "reaction_add",
+		ID:        targetID,
+		UserID:    evt.Sender.String(),
+		Username:  displayName(evt.Sender),
+		Content:   emoji,
+		Channel:   evt.RoomID.String(),
+		Timestamp: time.UnixMilli(evt.Timestamp),
 	}
 }
 
@@ -293,15 +346,23 @@ func (a *Adapter) eventToMessage(evt *event.Event) *model.Message {
 	}
 
 	if rel := content.RelatesTo; rel != nil {
-		if replaceID := rel.GetReplaceID(); replaceID != "" {
+		switch {
+		case rel.GetReplaceID() != "":
 			// An edit: target the replaced event and use the new body.
 			msg.EventType = "message_update"
-			msg.ID = replaceID.String()
+			msg.ID = rel.GetReplaceID().String()
 			if content.NewContent != nil {
 				msg.Content = content.NewContent.Body
 			}
-		} else if replyID := rel.GetReplyTo(); replyID != "" {
-			msg.ReplyToID = replyID.String()
+		case rel.GetThreadParent() != "":
+			// A message posted into a thread: surface the thread indicator. A
+			// threaded message may still carry a genuine (non-fallback) reply.
+			msg.ThreadID = rel.GetThreadParent().String()
+			if replyID := rel.GetNonFallbackReplyTo(); replyID != "" {
+				msg.ReplyToID = replyID.String()
+			}
+		case rel.GetReplyTo() != "":
+			msg.ReplyToID = rel.GetReplyTo().String()
 		}
 	}
 	if msg.EventType == "" {
@@ -467,6 +528,17 @@ func (a *Adapter) Edit(ctx context.Context, ref network.ChannelRef, messageID, c
 		RelatesTo:  &event.RelatesTo{Type: event.RelReplace, EventID: id.EventID(messageID)},
 	}
 	_, err := a.client.SendMessageEvent(ctx, id.RoomID(ref.ID), event.EventMessage, &msgContent)
+	return err
+}
+
+// React sends an m.reaction annotation for messageID with the given emoji. The
+// homeserver echoes it back over /sync, which onReaction folds into the target
+// message's aggregated reactions.
+func (a *Adapter) React(ref network.ChannelRef, messageID, emoji string) error {
+	if a.client == nil {
+		return fmt.Errorf("matrix: not connected")
+	}
+	_, err := a.client.SendReaction(context.Background(), id.RoomID(ref.ID), id.EventID(messageID), emoji)
 	return err
 }
 

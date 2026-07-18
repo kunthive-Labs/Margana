@@ -115,6 +115,138 @@ func TestOnRoomMessageImageAttachment(t *testing.T) {
 	}
 }
 
+func reactionEvent(roomID, sender, targetID, key string) *event.Event {
+	return &event.Event{
+		ID:        id.EventID("$react1"),
+		Sender:    id.UserID(sender),
+		RoomID:    id.RoomID(roomID),
+		Timestamp: 1700000000000,
+		Type:      event.EventReaction,
+		Content: event.Content{Parsed: &event.ReactionEventContent{
+			RelatesTo: event.RelatesTo{Type: event.RelAnnotation, EventID: id.EventID(targetID), Key: key},
+		}},
+	}
+}
+
+func TestOnReactionMapsToDelta(t *testing.T) {
+	a := newTestAdapter(t)
+	evt := reactionEvent("!room:example.org", "@bob:example.org", "$target", "👍")
+
+	a.onReaction(context.Background(), evt)
+
+	ev := <-a.events
+	if ev.Kind != network.EventMessage || ev.Message == nil {
+		t.Fatalf("expected message event, got %+v", ev)
+	}
+	m := ev.Message
+	if m.EventType != "reaction_add" {
+		t.Fatalf("expected reaction_add, got %q", m.EventType)
+	}
+	if m.ID != "$target" {
+		t.Fatalf("reaction must target the annotated event id, got %q", m.ID)
+	}
+	if m.Content != "👍" {
+		t.Fatalf("reaction emoji must ride in Content, got %q", m.Content)
+	}
+	if m.Channel != "!room:example.org" {
+		t.Fatalf("reaction channel = %q", m.Channel)
+	}
+	if m.Username != "bob" || m.UserID != "@bob:example.org" {
+		t.Fatalf("reactor identity not set: username=%q userID=%q", m.Username, m.UserID)
+	}
+	if m.Network != string(ID) {
+		t.Fatalf("network not stamped: %q", m.Network)
+	}
+}
+
+func TestReactionToMessageRejectsMalformed(t *testing.T) {
+	a := newTestAdapter(t)
+	cases := []struct {
+		name string
+		evt  *event.Event
+	}{
+		{"missing key", reactionEvent("!r:hs", "@b:hs", "$t", "")},
+		{"missing target", reactionEvent("!r:hs", "@b:hs", "", "👍")},
+		{"wrong parsed type", &event.Event{
+			Type:    event.EventReaction,
+			Content: event.Content{Parsed: &event.MessageEventContent{MsgType: event.MsgText}},
+		}},
+		{"nil parsed", &event.Event{Type: event.EventReaction, Content: event.Content{}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if m := a.reactionToMessage(tc.evt); m != nil {
+				t.Fatalf("expected nil for %s, got %+v", tc.name, m)
+			}
+		})
+	}
+}
+
+func TestOnRoomMessageThread(t *testing.T) {
+	cases := []struct {
+		name        string
+		rel         *event.RelatesTo
+		wantThread  string
+		wantReplyTo string
+	}{
+		{
+			name: "thread with fallback reply hides the reply",
+			rel: &event.RelatesTo{
+				Type:          event.RelThread,
+				EventID:       id.EventID("$threadroot"),
+				InReplyTo:     &event.InReplyTo{EventID: id.EventID("$prev")},
+				IsFallingBack: true,
+			},
+			wantThread:  "$threadroot",
+			wantReplyTo: "",
+		},
+		{
+			name: "thread with genuine reply keeps both",
+			rel: &event.RelatesTo{
+				Type:      event.RelThread,
+				EventID:   id.EventID("$threadroot"),
+				InReplyTo: &event.InReplyTo{EventID: id.EventID("$real")},
+			},
+			wantThread:  "$threadroot",
+			wantReplyTo: "$real",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestAdapter(t)
+			content := &event.MessageEventContent{MsgType: event.MsgText, RelatesTo: tc.rel}
+			evt := roomMessageEvent("!room:example.org", "@bob:example.org", "in thread", content)
+
+			a.onRoomMessage(context.Background(), evt)
+
+			m := (<-a.events).Message
+			if m.ThreadID != tc.wantThread {
+				t.Fatalf("ThreadID = %q, want %q", m.ThreadID, tc.wantThread)
+			}
+			if m.ReplyToID != tc.wantReplyTo {
+				t.Fatalf("ReplyToID = %q, want %q", m.ReplyToID, tc.wantReplyTo)
+			}
+			if m.EventType != "message_create" {
+				t.Fatalf("EventType = %q, want message_create", m.EventType)
+			}
+		})
+	}
+}
+
+func TestReactRequiresClient(t *testing.T) {
+	a := &Adapter{}
+	if err := a.React(network.ChannelRef{ID: "!r:hs"}, "$e", "👍"); err == nil {
+		t.Fatal("React: expected error when not connected")
+	}
+}
+
+func TestCapabilitiesReactions(t *testing.T) {
+	a := newTestAdapter(t)
+	if !a.Capabilities().Reactions {
+		t.Fatal("matrix adapter must advertise Reactions capability")
+	}
+}
+
 func TestLocalpart(t *testing.T) {
 	if got := localpart("@alice:example.org"); got != "alice" {
 		t.Fatalf("localpart: got %q", got)

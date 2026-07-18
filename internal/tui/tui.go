@@ -24,6 +24,8 @@ import (
 	"github.com/kunthive-Labs/Margana/internal/history"
 	"github.com/kunthive-Labs/Margana/internal/model"
 	"github.com/kunthive-Labs/Margana/internal/network"
+	"github.com/kunthive-Labs/Margana/internal/plugin"
+	"github.com/kunthive-Labs/Margana/internal/tui/panels"
 	"github.com/kunthive-Labs/Margana/internal/webhook"
 )
 
@@ -38,6 +40,12 @@ type dbWriteResultMsg struct {
 	Err error
 }
 
+// reactResultMsg reports the outcome of an outbound /react. Success is silent;
+// the reaction itself arrives back over the network event stream.
+type reactResultMsg struct {
+	Err error
+}
+
 type localHistoryMsg struct {
 	Messages []model.Message
 	Channels []string
@@ -45,18 +53,12 @@ type localHistoryMsg struct {
 	Err      error
 }
 
-type GithubActivityEvent struct {
-	Type      string
-	Repo      string
-	Actor     string
-	Title     string
-	Timestamp time.Time
-}
-
-type githubActivityMsg struct {
-	Events  []GithubActivityEvent
-	Err     error
-	Warning string
+// panelDataMsg carries the result of one ambient-panel fetch back into the
+// Update loop. It replaces the old GitHub-specific githubActivityMsg so every
+// panel type (github, rss, ci, ...) shares one code path.
+type panelDataMsg struct {
+	PanelID string
+	Result  panels.Result
 }
 
 type trackedError struct {
@@ -94,6 +96,8 @@ type Model struct {
 
 	scrollOffset int
 	unreadCount  int
+	unread       map[string]int // network-qualified channel key -> unread count
+	mentions     map[string]int // network-qualified channel key -> mention count
 	input        InputModel
 	log          *log.Logger
 
@@ -132,10 +136,13 @@ type Model struct {
 	discordUsername   string
 	discordGlobalName string
 	guildName         string
-	githubRepo        string
-	githubToken       string
-	githubEvents      []GithubActivityEvent
-	githubLastFetch   time.Time
+
+	// panels holds the configured, immutable ambient sidebar panels; panelData
+	// holds their latest fetched results, keyed by Panel.ID. Bubble Tea copies
+	// the Model by value on every Update, so the results live in a map (a
+	// reference type) that copies share.
+	panels    []panels.Panel
+	panelData map[string]panels.Result
 
 	errors         []trackedError
 	errorsVisible  bool
@@ -145,7 +152,13 @@ type Model struct {
 
 	helpVisible      bool
 	coachVisible     bool
+	palette          paletteState
 	configuredGuilds []config.GuildEntry
+
+	// verifyVisible gates the interactive device-verification modal; verify
+	// holds its current state (nil when no verification is in flight).
+	verifyVisible bool
+	verify        *verifyState
 
 	setupStep          setupStep
 	setupGuilds        []setupGuild
@@ -156,6 +169,11 @@ type Model struct {
 	setupConfigPath    string
 	setupCfg           *config.Config
 	version            string
+
+	// plugins holds the Lua plugin manager (nil when plugins are disabled);
+	// pluginKeys maps a Bubble Tea key string to the plugin keybinding it fires.
+	plugins    *plugin.Manager
+	pluginKeys map[string]plugin.KeyRef
 }
 
 func New(adapters []network.Network, active network.NetworkID, store *db.Store, registry *commands.Registry, channel, username, discordID, discordUsername, discordGlobalName, guildName string, configuredGuilds []config.GuildEntry, discordAccessToken, discordClientID string, setupConfigPath string, setupCfg *config.Config, version string) Model {
@@ -209,6 +227,8 @@ func New(adapters []network.Network, active network.NetworkID, store *db.Store, 
 		notifications:      notifications,
 		typingUsers:        make(map[string]time.Time),
 		sentHashes:         make(map[string]time.Time),
+		unread:             make(map[string]int),
+		mentions:           make(map[string]int),
 		presences:          make(map[string]model.UserPresence),
 		log:                log.New(io.Discard, "", 0),
 		version:            version,
@@ -266,8 +286,12 @@ func (m Model) Init() tea.Cmd {
 		m.checkUpdates(),
 		m.input.CursorBlinkCmd(),
 		periodicRefreshCmd(),
-		m.githubPollCmd(),
 	)
+	// Fetch every panel immediately on startup (rather than waiting a full
+	// refresh interval, which left the sidebar blank until the first tick).
+	for i := range m.panels {
+		cmds = append(cmds, m.panelFetchCmd(i))
+	}
 	return tea.Batch(cmds...)
 }
 
@@ -349,6 +373,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					em.Network = string(ev.Network)
 				}
 				m, cmds = m.onMessageEvent(em, fromActive)
+				// Fan genuine new messages out to plugin on_message hooks
+				// (edits are not "new messages"). The manager filters self and
+				// system messages to avoid loops.
+				if em.EventType != "message_update" {
+					if hookCmd := m.runMessageHooks(em); hookCmd != nil {
+						cmds = append(cmds, hookCmd)
+					}
+				}
 			}
 		case network.EventStatus:
 			// Status reflects whichever network most recently changed state.
@@ -366,6 +398,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case network.EventPresentUsers:
 			if fromActive {
 				m, cmds = m.onPresentUsers(ev.Users)
+			}
+		case network.EventVerification:
+			// Device verification is modal and network-global (an incoming
+			// request must surface regardless of the active network).
+			if ev.Verification != nil {
+				m, cmds = m.onVerificationEvent(ev.Network, *ev.Verification)
 			}
 		case network.EventChannelList:
 			// reserved: adapters that push topology updates land here
@@ -432,6 +470,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if _, ok := m.available[m.channel]; !ok {
 			oldChannel := m.channel
 			m.channel = m.channels[0]
+			m.clearUnread(string(m.active), m.channel)
 			m.msgs = nil
 			m.scrollOffset = 0
 			m.allHistoryLoaded = false
@@ -552,6 +591,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case reactResultMsg:
+		if msg.Err != nil {
+			m.lastSendOk = false
+			m.sendErr = msg.Err.Error()
+			m.addError(fmt.Sprintf("react: %v", msg.Err))
+		}
+		return m, nil
+
 	case commands.CommandOutputMsg:
 		m.msgs = append(m.msgs, msg.Messages...)
 		if len(m.msgs) > 1000 {
@@ -565,6 +612,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.channel = msg.Channel
 
 		m.addChannel(msg.Channel)
+		m.clearUnread(string(m.active), msg.Channel)
 
 		m.msgs = nil
 		m.scrollOffset = 0
@@ -583,6 +631,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case commands.SwitchNetworkMsg:
 		return m.switchNetwork(network.NetworkID(msg.Network))
+
+	case commands.StartVerificationMsg:
+		return m.startVerification(msg.Target)
 
 	case commands.DeleteChannelMsg:
 		chName := msg.Channel
@@ -639,11 +690,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case commands.SendRawMsg:
 		return m, m.SendMessage(msg.Content, m.channel, "")
 
+	case commands.SetInputMsg:
+		m.input.SetValue(msg.Value)
+		return m, nil
+
+	case commands.NotifyMsg:
+		return m, pluginNotifyCmd(msg.Title, msg.Body)
+
 	case commands.SendFileMsg:
 		return m.sendFileWithEcho(msg.Path, msg.Content)
 
 	case commands.EditMessageMsg:
 		return m.handleEditCommand(msg)
+
+	case commands.ReactMsg:
+		return m.handleReact(msg.Emoji)
 
 	case commands.StartEditMsg:
 		return m.startEdit(msg.Target)
@@ -707,17 +768,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, periodicRefreshCmd()
 
-	case githubActivityMsg:
-		if msg.Err == nil {
-			m.githubEvents = msg.Events
-			m.githubLastFetch = time.Now()
-		} else {
-			m.addError(fmt.Sprintf("github: %v", msg.Err))
+	case panelDataMsg:
+		if m.panelData == nil {
+			m.panelData = make(map[string]panels.Result)
 		}
-		if msg.Warning != "" {
-			m.addError(fmt.Sprintf("github: %s", msg.Warning))
+		res := msg.Result
+		if res.Err != nil {
+			m.addError(fmt.Sprintf("panel %s: %v", msg.PanelID, res.Err))
+			// Keep the last good items on a transient fetch/parse error so the
+			// panel doesn't blank out mid-session.
+			if prev, ok := m.panelData[msg.PanelID]; ok && len(res.Items) == 0 {
+				res.Items = prev.Items
+			}
 		}
-		return m, m.githubPollCmd()
+		if res.Warning != "" {
+			m.addError(fmt.Sprintf("panel %s: %s", msg.PanelID, res.Warning))
+		}
+		m.panelData[msg.PanelID] = res
+		return m, m.panelPollCmd(m.panelIndex(msg.PanelID))
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -747,6 +815,14 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.isSetupVisible() {
 		return m.handleSetupKey(msg)
 	}
+	if m.palette.visible {
+		return m.handlePaletteKey(msg)
+	}
+	// The device-verification modal is blocking: it swallows all keys except
+	// the confirm/cancel shortcuts and the global quit chords.
+	if m.verifyVisible {
+		return m.handleVerifyKey(msg)
+	}
 
 	// Handle Alt+R or Ctrl+G: enter reply select mode
 	altR := msg.Alt && len(msg.Runes) == 1 && (msg.Runes[0] == 'r' || msg.Runes[0] == 'R')
@@ -766,6 +842,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startEdit("")
 	}
 
+	// Alt+1..9: quick-switch to the Nth channel in the sidebar (D4).
+	if msg.Alt && len(msg.Runes) == 1 && msg.Runes[0] >= '1' && msg.Runes[0] <= '9' {
+		if idx := int(msg.Runes[0] - '1'); idx < len(m.channels) {
+			ch := m.channels[idx]
+			return m, func() tea.Msg { return commands.SwitchChannelMsg{Channel: ch} }
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "ctrl+s":
 		if !m.isSetupVisible() {
@@ -775,6 +860,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "ctrl+h":
 		m.helpVisible = !m.helpVisible
+		return m, nil
+
+	case "ctrl+k":
+		m.openPalette()
 		return m, nil
 
 	case "ctrl+o":
@@ -1104,6 +1193,13 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.input.ApplyNextCompletion()
 		}
 		return m, nil
+	}
+
+	// Plugin keybindings are consulted only after the built-in switch, so
+	// built-ins always win; a bound plugin key runs its Lua handler off the
+	// Update loop.
+	if ref, ok := m.pluginKeys[msg.String()]; ok {
+		return m, m.runPluginKey(ref)
 	}
 
 	if m.replySelectMode || m.editSelectMode || (m.errorsVisible && m.errorFocused) {
@@ -1563,10 +1659,55 @@ func (m *Model) prevChannel() {
 	m.channel = m.channels[(idx-1+len(m.channels))%len(m.channels)]
 }
 
-func (m Model) WithGithub(repo, token string) Model {
-	m.githubRepo = repo
-	m.githubToken = token
+// WithPanels builds the ambient sidebar panels from config. Each entry is
+// turned into a panels.Panel via panels.New; entries that fail to build (unknown
+// type, bad refresh, ...) are surfaced as errors and skipped rather than
+// aborting startup. Wired from cmd/marga with cfg.EnabledPanels().
+func (m Model) WithPanels(cfgs []config.PanelConfig) Model {
+	var built []panels.Panel
+	for _, c := range cfgs {
+		p, err := panels.New(c)
+		if err != nil {
+			m.addError(fmt.Sprintf("panel config: %v", err))
+			continue
+		}
+		built = append(built, p)
+	}
+	m.panels = built
+	m.panelData = make(map[string]panels.Result)
 	return m
+}
+
+// WithPlugins attaches the Lua plugin manager and caches its keybindings for
+// dispatch in handleKey. Plugin commands are registered separately (on the
+// shared registry) before the model is built.
+func (m Model) WithPlugins(mgr *plugin.Manager) Model {
+	m.plugins = mgr
+	if mgr != nil {
+		m.pluginKeys = mgr.Keybindings()
+	}
+	return m
+}
+
+// runPluginKey runs the Lua handler bound to a plugin key, off the Update loop.
+func (m *Model) runPluginKey(ref plugin.KeyRef) tea.Cmd {
+	return m.plugins.RunKey(ref)
+}
+
+// runMessageHooks fans an incoming message out to plugin on_message handlers,
+// off the Update loop. Self and system messages are filtered by the manager to
+// avoid feedback loops. Returns nil when there is nothing to run.
+func (m *Model) runMessageHooks(msg model.Message) tea.Cmd {
+	if !m.plugins.HasMessageHooks() {
+		return nil
+	}
+	return m.plugins.RunMessageHooks(plugin.HookMessage{
+		Channel:  msg.Channel,
+		Username: msg.Username,
+		Content:  msg.Content,
+		IsSelf:   m.isSelfMessage(msg),
+		IsSystem: msg.Username == commands.SystemUsername,
+	})
 }
 
 // WithLogger directs the model's diagnostic output (history/channel/db errors)
@@ -1579,7 +1720,8 @@ func (m Model) WithLogger(l *log.Logger) Model {
 	return m
 }
 
-// githubPollCmd schedules a GitHub activity fetch if a repo is configured.
+// centerInTerm pads content (modalW x modalH) to full terminal dimensions using
+// spaces. Avoids lipgloss.Place ANSI measurement issues.
 func centerInTerm(content string, modalW, modalH, termW, termH int) string {
 	lines := strings.Split(content, "\n")
 

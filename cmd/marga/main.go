@@ -29,7 +29,9 @@ import (
 	"github.com/kunthive-Labs/Margana/internal/network"
 	"github.com/kunthive-Labs/Margana/internal/network/demo"
 	"github.com/kunthive-Labs/Margana/internal/network/discordrelay"
+	"github.com/kunthive-Labs/Margana/internal/network/irc"
 	"github.com/kunthive-Labs/Margana/internal/network/matrix"
+	"github.com/kunthive-Labs/Margana/internal/plugin"
 	"github.com/kunthive-Labs/Margana/internal/setup"
 	"github.com/kunthive-Labs/Margana/internal/tui"
 )
@@ -310,6 +312,8 @@ func main() {
 			mx := matrix.New(n, statePath)
 			mx.SetLogger(appLogger)
 			adapters = append(adapters, mx)
+		case "irc":
+			adapters = append(adapters, irc.New(n))
 		}
 	}
 	if len(adapters) == 0 {
@@ -347,9 +351,26 @@ func main() {
 	registry.Register(commands.NewLogoutCmd(cfg, configPath))
 	registry.Register(commands.NewClearMentionsCmd())
 	registry.Register(commands.NewEditCmd())
+	registry.Register(commands.NewReactCmd())
 	registry.Register(commands.NewServersCmd(cfg, configPath))
 	registry.Register(commands.NewSetupCmd())
+	registry.Register(commands.NewVerifyCmd())
 	registry.Register(commands.NewGlobalCmd(cfg, configPath, cfg.Server.RelayURL, cfg.Server.APIKey))
+
+	// Load Lua plugins (custom commands, keybindings, message-hook bots). A bad
+	// plugin is logged and skipped, never fatal; plugin commands join the shared
+	// registry so completion and /help pick them up automatically.
+	var pluginMgr *plugin.Manager
+	if cfg.Plugins.Enabled {
+		var files []plugin.FileSpec
+		for _, e := range cfg.Plugins.Entries {
+			files = append(files, plugin.FileSpec{Path: e.Path, Enabled: e.Enabled})
+		}
+		pluginMgr = plugin.New(plugin.Options{Dir: cfg.Plugins.Dir, Files: files},
+			appLogger.StdLogger("plugin", slog.LevelInfo))
+		pluginMgr.RegisterCommands(registry)
+		defer pluginMgr.Close()
+	}
 
 	tui.InitImageProtocol(cfg.UI.ImageProtocol)
 	tui.RegisterCustomThemes(cfg.Themes)
@@ -363,8 +384,9 @@ func main() {
 		configPath, cfg, version,
 	)
 	model = model.WithLogger(appLogger.StdLogger("tui", slog.LevelInfo))
-	if cfg.Github.Repo != "" {
-		model = model.WithGithub(cfg.Github.Repo, cfg.Github.Token)
+	model = model.WithPanels(cfg.EnabledPanels())
+	if pluginMgr != nil {
+		model = model.WithPlugins(pluginMgr)
 	}
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus())
 
@@ -377,6 +399,7 @@ func main() {
 		for _, a := range adapters {
 			_ = a.Disconnect()
 		}
+		pluginMgr.Close()
 		cancel()
 		p.Quit()
 	}()
@@ -554,6 +577,7 @@ func runDemo(version string) {
 	registry.Register(commands.NewSearchCmd(store))
 	registry.Register(commands.NewStatusCmd())
 	registry.Register(commands.NewClearMentionsCmd())
+	registry.Register(commands.NewReactCmd())
 	registry.Register(commands.NewQuitCmd())
 
 	tui.ApplyTheme(cfg.UI.Theme)

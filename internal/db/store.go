@@ -52,6 +52,8 @@ var schema = []string{
 	`CREATE INDEX IF NOT EXISTS idx_messages_content ON messages(content)`,
 	`ALTER TABLE messages ADD COLUMN attachments_json TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE messages ADD COLUMN editable INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE messages ADD COLUMN reactions_json TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE messages ADD COLUMN thread_id TEXT NOT NULL DEFAULT ''`,
 }
 
 func New(dbPath string) (*Store, error) {
@@ -140,15 +142,17 @@ func migrateFTS(db *sql.DB) error {
 func (s *Store) InsertMessage(msg model.Message) error {
 	attJSON := marshalAttachments(msg.Attachments)
 	_, err := s.db.Exec(
-		`INSERT INTO messages (id, username, content, channel, timestamp, attachments_json, editable) VALUES (?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO messages (id, username, content, channel, timestamp, attachments_json, editable, reactions_json, thread_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   username=excluded.username,
 		   content=excluded.content,
 		   channel=excluded.channel,
 		   timestamp=excluded.timestamp,
 		   attachments_json=excluded.attachments_json,
-		   editable=excluded.editable`,
-		msg.ID, msg.Username, msg.Content, msg.Channel, msg.Timestamp.UTC(), attJSON, boolToInt(msg.Editable),
+		   editable=excluded.editable,
+		   reactions_json=excluded.reactions_json,
+		   thread_id=excluded.thread_id`,
+		msg.ID, msg.Username, msg.Content, msg.Channel, msg.Timestamp.UTC(), attJSON, boolToInt(msg.Editable), marshalReactions(msg.Reactions), msg.ThreadID,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting message: %w", err)
@@ -158,8 +162,8 @@ func (s *Store) InsertMessage(msg model.Message) error {
 
 func (s *Store) UpdateMessage(msg model.Message) error {
 	_, err := s.db.Exec(
-		`UPDATE messages SET content = ?, username = ?, channel = ?, attachments_json = ?, editable = ? WHERE id = ?`,
-		msg.Content, msg.Username, msg.Channel, marshalAttachments(msg.Attachments), boolToInt(msg.Editable), msg.ID,
+		`UPDATE messages SET content = ?, username = ?, channel = ?, attachments_json = ?, editable = ?, reactions_json = ?, thread_id = ? WHERE id = ?`,
+		msg.Content, msg.Username, msg.Channel, marshalAttachments(msg.Attachments), boolToInt(msg.Editable), marshalReactions(msg.Reactions), msg.ThreadID, msg.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("updating message: %w", err)
@@ -172,10 +176,10 @@ func (s *Store) GetMessages(channel string, limit int, before *time.Time) ([]mod
 	var query string
 
 	if before != nil {
-		query = `SELECT id, username, content, channel, timestamp, attachments_json, editable FROM messages WHERE channel = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT ?`
+		query = `SELECT id, username, content, channel, timestamp, attachments_json, editable, reactions_json, thread_id FROM messages WHERE channel = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT ?`
 		args = []interface{}{channel, before.UTC(), limit}
 	} else {
-		query = `SELECT id, username, content, channel, timestamp, attachments_json, editable FROM messages WHERE channel = ? ORDER BY timestamp DESC LIMIT ?`
+		query = `SELECT id, username, content, channel, timestamp, attachments_json, editable, reactions_json, thread_id FROM messages WHERE channel = ? ORDER BY timestamp DESC LIMIT ?`
 		args = []interface{}{channel, limit}
 	}
 
@@ -194,7 +198,7 @@ func (s *Store) GetMessages(channel string, limit int, before *time.Time) ([]mod
 func (s *Store) SearchMessages(query string) ([]model.Message, error) {
 	if match := buildFTSMatch(query); match != "" {
 		rows, err := s.db.Query(
-			`SELECT m.id, m.username, m.content, m.channel, m.timestamp, m.attachments_json, m.editable
+			`SELECT m.id, m.username, m.content, m.channel, m.timestamp, m.attachments_json, m.editable, m.reactions_json, m.thread_id
 			 FROM messages_fts f JOIN messages m ON m.rowid = f.rowid
 			 WHERE f MATCH ? ORDER BY m.timestamp DESC LIMIT 100`,
 			match,
@@ -208,7 +212,7 @@ func (s *Store) SearchMessages(query string) ([]model.Message, error) {
 	}
 
 	rows, err := s.db.Query(
-		`SELECT id, username, content, channel, timestamp, attachments_json, editable FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT 100`,
+		`SELECT id, username, content, channel, timestamp, attachments_json, editable, reactions_json, thread_id FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT 100`,
 		"%"+query+"%",
 	)
 	if err != nil {
@@ -244,11 +248,15 @@ func scanMessages(rows *sql.Rows) ([]model.Message, error) {
 		var m model.Message
 		var attJSON string
 		var editable int
-		if err := rows.Scan(&m.ID, &m.Username, &m.Content, &m.Channel, &m.Timestamp, &attJSON, &editable); err != nil {
+		var reactionsJSON string
+		var threadID string
+		if err := rows.Scan(&m.ID, &m.Username, &m.Content, &m.Channel, &m.Timestamp, &attJSON, &editable, &reactionsJSON, &threadID); err != nil {
 			return nil, fmt.Errorf("scanning message row: %w", err)
 		}
 		m.Attachments = unmarshalAttachments(attJSON)
 		m.Editable = editable == 1
+		m.Reactions = unmarshalReactions(reactionsJSON)
+		m.ThreadID = threadID
 		msgs = append(msgs, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -451,6 +459,28 @@ func unmarshalAttachments(s string) []model.Attachment {
 		return nil
 	}
 	return atts
+}
+
+func marshalReactions(reactions []model.Reaction) string {
+	if len(reactions) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(reactions)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func unmarshalReactions(s string) []model.Reaction {
+	if s == "" {
+		return nil
+	}
+	var reactions []model.Reaction
+	if err := json.Unmarshal([]byte(s), &reactions); err != nil {
+		return nil
+	}
+	return reactions
 }
 
 func DefaultDBPath() (string, error) {

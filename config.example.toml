@@ -24,6 +24,8 @@
 #   MARGA_LOG_LEVEL              → logging.level (debug/info/warn/error)
 #   MARGA_LOG_FILE               → logging.file
 #   MARGA_LOG_FORMAT             → logging.format (text/json)
+#   MARGA_PLUGINS_ENABLED        → plugins.enabled (true/false)
+#   MARGA_PLUGINS_DIR            → plugins.dir
 #
 # See docs/CONFIGURATION.md for the complete reference.
 
@@ -115,10 +117,12 @@ history_limit = 100
 # Override with MARGA_IMAGE_PROTOCOL env var.
 image_protocol = "auto"
 
-# ── GitHub Activity ──────────────────────────────────────────────────────
-# Optional. When both `repo` and (for private repos) `token` are set, Marga
-# shows a sidebar panel with the latest events from the GitHub repo, refreshed
-# every 60 seconds. Leave either field empty to disable the panel.
+# ── GitHub Activity (shorthand) ────────────────────────────────────────────
+# Optional. When `repo` is set, Marga shows a sidebar panel with the latest
+# events from the GitHub repo, refreshed every 60 seconds. This block is now
+# shorthand for a single `[[panels]]` entry of type "github" (see below); it is
+# kept for backward compatibility. If you declare an explicit github panel in
+# [[panels]], this block is ignored. Leave `repo` empty to disable it.
 [github]
 # Personal access token used to authenticate against the GitHub API.
 # - Public repos: optional, but recommended (raises rate limit from 60/hr to
@@ -130,6 +134,40 @@ token = ""
 
 # Repository to track, in "owner/repo" format. Example: "kunthive-Labs/Margana".
 repo = ""
+
+# ── Ambient panels ─────────────────────────────────────────────────────────
+# Configurable sidebar panels. Declare as many as you like; they render in the
+# right-hand sidebar (up to a few at a time, sharing the available height). Each
+# panel refreshes on its own interval. The [github] block above is shorthand for
+# a single github panel; use [[panels]] for more control or additional sources.
+#
+# Fields:
+#   type    — "github" (recent repo events), "ci" (GitHub Actions runs), or
+#             "rss" (an RSS 2.0 feed). Required.
+#   source  — "owner/repo" for github/ci, or the feed URL for rss. Required.
+#   title   — panel heading. Optional; a sensible per-type default is used.
+#   refresh — refresh interval as a Go duration ("30s", "5m"). Optional; 60s.
+#   token   — GitHub PAT for github/ci panels. Optional (raises the rate limit;
+#             required for private repos). Unused by rss.
+#   enabled — set false to keep an entry but disable it. Optional; default true.
+#
+# [[panels]]
+# type    = "github"
+# source  = "kunthive-Labs/Margana"
+# title   = "GitHub"
+# refresh = "60s"
+# token   = ""
+#
+# [[panels]]
+# type    = "ci"
+# source  = "kunthive-Labs/Margana"
+# refresh = "120s"
+#
+# [[panels]]
+# type    = "rss"
+# source  = "https://hnrss.org/frontpage"
+# title   = "Hacker News"
+# refresh = "5m"
 
 # ── Notifications ──────────────────────────────────────────────────────────
 [notifications]
@@ -160,6 +198,25 @@ file = ""
 # Encoding: "text" (human-readable, default) or "json" (one object per line).
 format = "text"
 
+# ── Plugins (Lua scripting) ────────────────────────────────────────────────
+# Extend Marga with custom slash commands, keybindings, and message-hook bots
+# written in Lua. Scripts run in a sandboxed, CGo-free VM (only base/table/
+# string/math are available; os/io/require and the filesystem are withheld) and
+# each call is bounded by a timeout. See docs/PLUGINS.md for the API.
+#
+# [plugins]
+# enabled = true
+# # Base directory for relative plugin paths. Defaults to <config-dir>/plugins
+# # (e.g. ~/.config/marga/plugins on Linux). Env: MARGA_PLUGINS_DIR.
+# dir = ""
+#
+# # List each script as a [[plugins.entries]] block. A single [plugins] table
+# # cannot also be a [[plugins]] array in TOML, so entries are nested here.
+# # `path` is absolute, or relative to `dir` above.
+# [[plugins.entries]]
+# path = "roll.lua"    # a worked example ships in docs/plugins/roll.lua
+# enabled = true
+
 # ── Additional networks (experimental) ─────────────────────────────────────
 # Marga speaks to multiple chat networks behind one TUI. Discord (above) is
 # implicit. Add other networks as [[networks]] entries. Secrets are stored in
@@ -174,6 +231,21 @@ format = "text"
 # enabled    = true
 # homeserver = "https://matrix.org"
 # user_id    = "@you:matrix.org"   # non-secret; the access token lives in the keyring
+
+# IRC connects DIRECTLY to any IRC network (no relay). SASL is optional: set the
+# sasl_user below and store the password in the keyring (key "sasl_password")
+# or via MARGA_IRC_PASSWORD. Port defaults to 6697 (tls=true) or 6667 (tls=false).
+# IRC has no server-side history, edits, typing, or presence broadcast.
+#
+# [[networks]]
+# id        = "irc"
+# type      = "irc"
+# enabled   = true
+# server    = "irc.libera.chat"
+# port      = 6697
+# tls       = true
+# nick      = "your_nick"
+# sasl_user = "your_account"   # optional; omit for an anonymous connection
 
 # ── Custom themes ──────────────────────────────────────────────────────────
 # Define your own palette, then select it above with ui.theme = "<name>". Every

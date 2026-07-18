@@ -1,0 +1,32 @@
+# Marga self-host reference relay.
+#
+#   API_KEY=$(openssl rand -hex 32) docker compose up --build
+#
+# Then point Marga at it:
+#   server.websocket_url = "ws://localhost:8443/ws"
+#   server.relay_url     = "http://localhost:8443"
+#   server.api_key       = "<the same API_KEY>"
+#
+# See docs/RELAY.md for the full contract, config, and retention/deletion notes.
+
+services:
+  relay:
+    build: .
+    image: marga-relay:local
+    ports:
+      - "8443:8443"
+    environment:
+      LISTEN_ADDR: ":8443"
+      # Set a strong key to require the X-API-Key header; empty = open relay.
+      API_KEY: "${API_KEY:-}"
+      RELAY_DB_PATH: "/data/relay.db"
+      # Go duration; "0" keeps messages forever. e.g. 168h for a 7-day window.
+      RELAY_RETENTION: "${RELAY_RETENTION:-0}"
+      # local (echo) | discord (stub; the real bridge is marga-discord-relay).
+      RELAY_BACKEND: "${RELAY_BACKEND:-local}"
+    volumes:
+      - relay-data:/data
+    restart: unless-stopped
+
+volumes:
+  relay-data:

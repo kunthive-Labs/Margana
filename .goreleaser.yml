@@ -33,7 +33,7 @@ builds:
 
 archives:
   - id: marga
-    builds:
+    ids:
       - marga
     name_template: >-
       {{ .ProjectName }}_
@@ -42,7 +42,7 @@ archives:
       {{- .Arch }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats: ["zip"]
     files:
       - config.example.toml
       - README.md
@@ -53,7 +53,7 @@ checksum:
   name_template: "checksums.txt"
 
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  version_template: "{{ .Tag }}-next"
 
 changelog:
   sort: asc
@@ -68,19 +68,29 @@ release:
     owner: kunthive-Labs
     name: Margana
 
-brews:
+# Homebrew (macOS/Linux). Publishes a Cask to kunthive-Labs/homebrew-tap, so
+# `brew install kunthive-Labs/tap/marga` works once that repo exists (see
+# docs/RELEASING.md). `brews:` (Formula) was deprecated by GoReleaser in favor
+# of casks for pre-built binaries.
+homebrew_casks:
   - name: marga
     repository:
       owner: kunthive-Labs
       name: homebrew-tap
-    directory: Formula
+    directory: Casks
     homepage: "https://github.com/kunthive-Labs/Margana"
     description: "Terminal-native, multi-network realtime chat client (Discord, Matrix)"
     license: Apache-2.0
-    test: |
-      system "#{bin}/marga", "--help"
-    install: |
-      bin.install "marga"
+    binaries:
+      - marga
+    # Binaries downloaded outside the App Store are quarantined by Gatekeeper;
+    # strip the attribute so `marga` launches without a security prompt.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/marga"]
+          end
 
 nfpms:
   - package_name: marga
@@ -115,8 +125,13 @@ scoops:
     description: "Terminal-native, multi-network realtime chat client (Discord, Matrix)"
     license: Apache-2.0
 
+# Nix user-repository publish is deferred until the kunthive-Labs/nixpkgs repo
+# exists (roadmap C1 permits enabling nix/AUR later). Flip skip_upload to
+# "false" once it's set up. The nix expression is still built and attached to
+# the GitHub Release regardless.
 nix:
   - name: marga
+    skip_upload: "true"
     repository:
       owner: kunthive-Labs
       name: nixpkgs
@@ -124,8 +139,12 @@ nix:
     description: "Terminal-native, multi-network realtime chat client (Discord, Matrix)"
     license: asl20
 
+# AUR publish is deferred until an AUR_KEY secret + the aur.archlinux.org
+# package repo exist (roadmap C1 permits enabling nix/AUR later). Flip
+# skip_upload to "false" once the key is wired up.
 aurs:
   - name: marga-bin
+    skip_upload: "true"
     homepage: "https://github.com/kunthive-Labs/Margana"
     description: "Terminal-native, multi-network realtime chat client (Discord, Matrix)"
     maintainers:

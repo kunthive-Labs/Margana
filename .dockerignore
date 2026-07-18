@@ -1,0 +1,15 @@
+# Keep the build context small: the image only needs Go sources + go.mod/go.sum.
+.git
+.github
+.claude
+bin/
+dist/
+assets/
+landing/
+docs/
+*.md
+*.png
+config.example.toml
+.env.example
+.golangci.yml
+.goreleaser.yml

@@ -74,7 +74,43 @@ const (
 	EventStatus                        // this adapter's connection state changed
 	EventChannelList                   // server/channel topology refreshed
 	EventPresentUsers                  // "who is online" snapshot
+	EventVerification                  // interactive device verification (SAS) update
 )
+
+// VerificationPhase tracks the stage of an interactive SAS device verification
+// as it progresses. The TUI renders a modal keyed off the current phase.
+type VerificationPhase int
+
+const (
+	// VerificationRequested: an incoming request has arrived (or we just sent
+	// one) and the secure channel is being established.
+	VerificationRequested VerificationPhase = iota
+	// VerificationReady: both parties agreed on methods; the SAS exchange is
+	// starting.
+	VerificationReady
+	// VerificationShowSAS: the short authentication string (emoji/decimal) is
+	// ready to compare against the other device.
+	VerificationShowSAS
+	// VerificationDone: the devices verified each other successfully.
+	VerificationDone
+	// VerificationCancelled: the verification was cancelled, rejected, or timed
+	// out. Reason carries a human-readable explanation.
+	VerificationCancelled
+)
+
+// VerificationPrompt carries one step of an interactive SAS device
+// verification to the TUI. Only adapters implementing Verifier (Matrix) emit
+// these; the TUI surfaces them as an emoji-compare modal.
+type VerificationPrompt struct {
+	TxnID        string
+	FromUser     string
+	FromDevice   string
+	Emojis       []rune   // one rune per SAS emoji (typically 7); may be empty
+	Descriptions []string // human labels aligned with Emojis
+	Decimals     []int    // decimal SAS fallback; may be empty
+	Phase        VerificationPhase
+	Reason       string // populated when Phase == VerificationCancelled
+}
 
 // Event is the single envelope the TUI consumes from every adapter. Network is
 // always set so the multiplexer can fan-in N adapters without losing origin.
@@ -91,4 +127,7 @@ type Event struct {
 	RetryAt  time.Time
 	Channels []ChannelRef
 	Users    []string
+	// Verification carries an interactive device-verification step (set on
+	// EventVerification events; nil otherwise).
+	Verification *VerificationPrompt
 }

@@ -332,6 +332,16 @@ func tokenizeAndColor(line string, keywords map[string]bool, commentPrefix strin
 	return out.String()
 }
 
+// renderHyperlink wraps a visible label in an OSC 8 terminal hyperlink so
+// supporting terminals make it clickable, while keeping the cyan+underline
+// styling. Terminals without OSC 8 support ignore the escape and show the styled
+// label; the OSC 8 sequences are zero-width, so wrapping and line-counting (which
+// measure with lipgloss.Width) are unaffected.
+func renderHyperlink(url, label string) string {
+	styled := lipgloss.NewStyle().Foreground(themeCyan).Underline(true).Render(label)
+	return "\x1b]8;;" + url + "\x1b\\" + styled + "\x1b]8;;\x1b\\"
+}
+
 func renderInline(text, myUsername string) string {
 	runes := []rune(text)
 	n := len(runes)
@@ -415,13 +425,47 @@ func renderInline(text, myUsername string) string {
 				i++
 			}
 
+		case runes[i] == '[':
+			// [label](url) markdown link
+			closeBr := -1
+			for j := i + 1; j < n; j++ {
+				if runes[j] == ']' {
+					closeBr = j
+					break
+				}
+				if runes[j] == '\n' {
+					break
+				}
+			}
+			if closeBr > i+1 && closeBr+1 < n && runes[closeBr+1] == '(' {
+				closeParen := -1
+				for j := closeBr + 2; j < n; j++ {
+					if runes[j] == ')' {
+						closeParen = j
+						break
+					}
+					if runes[j] == '\n' || runes[j] == ' ' {
+						break
+					}
+				}
+				if closeParen > closeBr+2 {
+					label := string(runes[i+1 : closeBr])
+					url := string(runes[closeBr+2 : closeParen])
+					out.WriteString(renderHyperlink(url, label))
+					i = closeParen + 1
+					continue
+				}
+			}
+			out.WriteRune(runes[i])
+			i++
+
 		case i+7 <= n && string(runes[i:i+7]) == "http://":
 			j := i
 			for j < n && runes[j] != ' ' && runes[j] != '\n' {
 				j++
 			}
 			url := string(runes[i:j])
-			out.WriteString(lipgloss.NewStyle().Foreground(themeCyan).Underline(true).Render(url))
+			out.WriteString(renderHyperlink(url, url))
 			i = j
 
 		case i+8 <= n && string(runes[i:i+8]) == "https://":
@@ -430,7 +474,7 @@ func renderInline(text, myUsername string) string {
 				j++
 			}
 			url := string(runes[i:j])
-			out.WriteString(lipgloss.NewStyle().Foreground(themeCyan).Underline(true).Render(url))
+			out.WriteString(renderHyperlink(url, url))
 			i = j
 
 		default:

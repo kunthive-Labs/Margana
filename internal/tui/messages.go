@@ -297,6 +297,22 @@ func osNotifyCmd(channel, user, content string) tea.Cmd {
 	}
 }
 
+// pluginNotifyCmd shows an OS desktop notification requested by a plugin
+// (marga.notify). Like osNotifyCmd it runs off the render path and ignores a
+// missing notification backend.
+func pluginNotifyCmd(title, body string) tea.Cmd {
+	return func() tea.Msg {
+		if title == "" {
+			title = "Marga"
+		}
+		if r := []rune(body); len(r) > 200 {
+			body = string(r[:200]) + "…"
+		}
+		_ = beeep.Notify(title, body, "")
+		return nil
+	}
+}
+
 // periodicRefreshCmd schedules a periodic history refresh every 30 seconds.
 func periodicRefreshCmd() tea.Cmd {
 	return tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
@@ -311,5 +327,3 @@ func reconnectTickCmd() tea.Cmd {
 		return reconnectTickMsg{}
 	})
 }
-
-// WithGithub sets the GitHub repo and token for the activity panel.

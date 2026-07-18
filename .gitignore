@@ -13,3 +13,4 @@ dist/
 *.rvf
 *.rvf.lock
 .DS_Store
+.claude/worktrees/

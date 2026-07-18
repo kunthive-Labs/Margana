@@ -17,8 +17,11 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/kunthive-Labs/Margana/internal/auth/discord"
 	"github.com/kunthive-Labs/Margana/internal/config"
+	"github.com/kunthive-Labs/Margana/internal/network/credstore"
 )
 
 const botPermissions = 536988672
@@ -28,6 +31,7 @@ type Step int
 const (
 	StepChooseNetwork Step = iota
 	StepMatrixConnect
+	StepIRCConnect
 	StepPickGuild
 	StepConfirmGuild
 	StepInviteBot
@@ -110,6 +114,10 @@ func RunSetup(ctx context.Context, cfg *config.Config, configPath string, auth *
 			if err := handleMatrixConnect(ctx, reader, cfg, configPath, state); err != nil {
 				return err
 			}
+		case StepIRCConnect:
+			if err := handleIRCConnect(ctx, reader, cfg, configPath, state); err != nil {
+				return err
+			}
 		case StepPickGuild:
 			if err := handlePickGuild(ctx, reader, auth, cfg, state); err != nil {
 				return err
@@ -145,7 +153,8 @@ func handleChooseNetwork(ctx context.Context, reader *bufio.Reader, cfg *config.
 	step("Which network would you like to connect?")
 	fmt.Println()
 	option("1", "Matrix  "+dim("— works now, no server needed"))
-	option("2", "Discord "+dim("— advanced, needs a self-hosted relay"))
+	option("2", "IRC     "+dim("— classic, connect to any IRC network"))
+	option("3", "Discord "+dim("— advanced, needs a self-hosted relay"))
 	fmt.Println()
 
 	for state.Network == "" {
@@ -153,7 +162,7 @@ func handleChooseNetwork(ctx context.Context, reader *bufio.Reader, cfg *config.
 			return nil
 		}
 
-		prompt("Choice (1/2): ")
+		prompt("Choice (1/2/3): ")
 		choice, err := readLine(ctx, reader)
 		if err != nil {
 			return nil
@@ -164,6 +173,9 @@ func handleChooseNetwork(ctx context.Context, reader *bufio.Reader, cfg *config.
 			state.Network = "matrix"
 			state.Step = StepMatrixConnect
 		case "2":
+			state.Network = "irc"
+			state.Step = StepIRCConnect
+		case "3":
 			// Discord is the advanced path: it needs a self-hosted relay and a
 			// registered Discord application. Only continue when that infra is
 			// present; otherwise point the user at the docs and loop back so a
@@ -192,7 +204,7 @@ func handleChooseNetwork(ctx context.Context, reader *bufio.Reader, cfg *config.
 				fmt.Println()
 			}
 		default:
-			fmt.Printf("  %s\n\n", errText("Please enter 1 or 2."))
+			fmt.Printf("  %s\n\n", errText("Please enter 1, 2, or 3."))
 		}
 	}
 	return nil
@@ -276,6 +288,147 @@ func normalizeHomeserver(s string) string {
 		s = "https://" + s
 	}
 	return strings.TrimSuffix(s, "/")
+}
+
+// handleIRCConnect gathers the non-secret IRC connection details (server, TLS,
+// nick, and an initial channel), writes them as an enabled [[networks]] entry,
+// and disables Discord for an IRC-only first run so config validation doesn't
+// demand relay endpoints. If the user supplies a SASL account, the password is
+// read without echo and stored in the OS keyring (service "marga-irc") — never
+// in the config file.
+func handleIRCConnect(ctx context.Context, reader *bufio.Reader, cfg *config.Config, configPath string, state *WizardState) error {
+	clearScreen()
+	printLogo()
+	step("IRC quick-connect")
+	fmt.Println()
+	fmt.Printf("  %s\n", dim("Connect directly to any IRC network — no relay."))
+	fmt.Println()
+
+	prompt("Server (e.g. irc.libera.chat): ")
+	server, err := readLine(ctx, reader)
+	if err != nil {
+		return nil
+	}
+	server = strings.TrimSpace(server)
+
+	prompt("Nickname: ")
+	nick, err := readLine(ctx, reader)
+	if err != nil {
+		return nil
+	}
+	nick = strings.TrimSpace(nick)
+
+	if server == "" || nick == "" {
+		fmt.Printf("\n  %s\n\n", errText("Server and nickname are both required."))
+		return nil // stay on StepIRCConnect; the wizard loop re-enters this step
+	}
+
+	prompt("Use TLS? (Y/n): ")
+	tlsChoice, err := readLine(ctx, reader)
+	if err != nil {
+		return nil
+	}
+	useTLS := !strings.EqualFold(strings.TrimSpace(tlsChoice), "n")
+	port := 6667
+	if useTLS {
+		port = 6697
+	}
+
+	prompt("Channel to join (e.g. #general): ")
+	channel, err := readLine(ctx, reader)
+	if err != nil {
+		return nil
+	}
+	channel = normalizeChannel(channel)
+
+	prompt("SASL account (optional — press Enter to skip): ")
+	saslUser, err := readLine(ctx, reader)
+	if err != nil {
+		return nil
+	}
+	saslUser = strings.TrimSpace(saslUser)
+
+	entry := config.NetworkConfig{
+		ID: "irc", Type: "irc", Enabled: true,
+		Server: server, Port: port, TLS: useTLS, Nick: nick, SASLUser: saslUser,
+	}
+	replaced := false
+	for i := range cfg.Networks {
+		if cfg.Networks[i].ID == "irc" {
+			cfg.Networks[i] = entry
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		cfg.Networks = append(cfg.Networks, entry)
+	}
+
+	if channel != "" {
+		cfg.General.Channel = channel
+	}
+
+	// Store the SASL password in the OS keyring (never the config file). The
+	// adapter reads it at connect time; MARGA_IRC_PASSWORD overrides it.
+	if saslUser != "" {
+		if pw, perr := readSecret("SASL password: "); perr == nil && pw != "" {
+			if serr := credstore.Set("irc", "sasl_password", pw); serr != nil {
+				fmt.Printf("  %s\n", warn(fmt.Sprintf("Could not store SASL password in the keyring: %v", serr)))
+				fmt.Printf("  %s\n", dim("Set MARGA_IRC_PASSWORD in the environment instead."))
+			}
+		}
+	}
+
+	// Disable Discord only for a clean IRC-only first run; preserve it when a
+	// Discord server or app is already configured.
+	if cfg.General.GuildID == "" && len(cfg.ConfiguredGuilds) == 0 && cfg.Auth.Discord.ClientID == "" {
+		cfg.Auth.Enabled = false
+	}
+
+	if err := cfg.Save(configPath); err != nil {
+		return fmt.Errorf("saving configuration: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("  %s %s\n", success("✓"), bold("IRC configured"))
+	bullet("Server", fmt.Sprintf("%s:%d", server, port))
+	bullet("Nickname", nick)
+	if channel != "" {
+		bullet("Channel", channel)
+	}
+	if saslUser != "" {
+		bullet("SASL account", saslUser)
+	}
+	fmt.Println()
+	state.Step = StepDone
+	return nil
+}
+
+// normalizeChannel ensures an IRC channel name carries a valid prefix (defaults
+// to "#"), so "general" and "#general" resolve to the same channel — and match
+// the channel the adapter stamps on incoming messages.
+func normalizeChannel(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	switch s[0] {
+	case '#', '&', '!', '+':
+		return s
+	default:
+		return "#" + s
+	}
+}
+
+// readSecret reads a line from the terminal without echoing it, for passwords.
+func readSecret(promptText string) (string, error) {
+	fmt.Printf("  %s %s", accent("›"), promptText)
+	raw, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(raw)), nil
 }
 
 func handlePickGuild(ctx context.Context, reader *bufio.Reader, auth *discord.Authenticator, cfg *config.Config, state *WizardState) error {

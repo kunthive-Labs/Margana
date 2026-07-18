@@ -138,6 +138,88 @@ func TestInsertMessage(t *testing.T) {
 	}
 }
 
+func TestMessageReactionsAndThreadRoundTrip(t *testing.T) {
+	store := openTestStore(t)
+
+	msg := model.Message{
+		ID:        "msg-react",
+		Username:  "arnav",
+		Content:   "reactable",
+		Channel:   "general",
+		Timestamp: time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
+		ThreadID:  "$thread-root",
+		Reactions: []model.Reaction{
+			{Emoji: "👍", Count: 3, Me: true},
+			{Emoji: "🎉", Count: 1},
+		},
+	}
+
+	if err := store.InsertMessage(msg); err != nil {
+		t.Fatalf("InsertMessage() error: %v", err)
+	}
+
+	got, err := store.GetMessages("general", 10, nil)
+	if err != nil {
+		t.Fatalf("GetMessages() error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(got))
+	}
+	if got[0].ThreadID != "$thread-root" {
+		t.Errorf("ThreadID round-trip = %q, want %q", got[0].ThreadID, "$thread-root")
+	}
+	if len(got[0].Reactions) != 2 {
+		t.Fatalf("expected 2 reactions, got %d (%+v)", len(got[0].Reactions), got[0].Reactions)
+	}
+	if got[0].Reactions[0].Emoji != "👍" || got[0].Reactions[0].Count != 3 || !got[0].Reactions[0].Me {
+		t.Errorf("first reaction round-trip wrong: %+v", got[0].Reactions[0])
+	}
+	if got[0].Reactions[1].Emoji != "🎉" || got[0].Reactions[1].Count != 1 || got[0].Reactions[1].Me {
+		t.Errorf("second reaction round-trip wrong: %+v", got[0].Reactions[1])
+	}
+
+	// UpdateMessage must persist a changed reaction set (and clearing it).
+	msg.Reactions = []model.Reaction{{Emoji: "🔥", Count: 5, Me: true}}
+	msg.ThreadID = ""
+	if err := store.UpdateMessage(msg); err != nil {
+		t.Fatalf("UpdateMessage() error: %v", err)
+	}
+	got, err = store.GetMessages("general", 10, nil)
+	if err != nil {
+		t.Fatalf("GetMessages() after update: %v", err)
+	}
+	if len(got[0].Reactions) != 1 || got[0].Reactions[0].Emoji != "🔥" || got[0].Reactions[0].Count != 5 {
+		t.Errorf("updated reactions wrong: %+v", got[0].Reactions)
+	}
+	if got[0].ThreadID != "" {
+		t.Errorf("cleared ThreadID should be empty, got %q", got[0].ThreadID)
+	}
+}
+
+func TestMessageWithoutReactionsHasNilSlice(t *testing.T) {
+	store := openTestStore(t)
+	msg := model.Message{
+		ID: "msg-plain", Username: "arnav", Content: "plain", Channel: "general",
+		Timestamp: time.Now().UTC(),
+	}
+	if err := store.InsertMessage(msg); err != nil {
+		t.Fatalf("InsertMessage() error: %v", err)
+	}
+	got, err := store.GetMessages("general", 10, nil)
+	if err != nil {
+		t.Fatalf("GetMessages() error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(got))
+	}
+	if got[0].Reactions != nil {
+		t.Errorf("expected nil reactions for a plain message, got %+v", got[0].Reactions)
+	}
+	if got[0].ThreadID != "" {
+		t.Errorf("expected empty ThreadID, got %q", got[0].ThreadID)
+	}
+}
+
 func TestInsertMessageDeduplication(t *testing.T) {
 	store := openTestStore(t)
 

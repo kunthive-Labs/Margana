@@ -338,6 +338,22 @@ func replyPreviewStyle() lipgloss.Style {
 		BorderForeground(themeAccentDim)
 }
 
+// reactionRowStyle indents the reactions summary to sit under a message's
+// content. It sets no color so each segment keeps its own (mine vs. others').
+func reactionRowStyle() lipgloss.Style {
+	return lipgloss.NewStyle().PaddingLeft(3)
+}
+
+// reactionStyle renders a reaction segment from another user (dim).
+func reactionStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(themeDim)
+}
+
+// reactionMineStyle emphasizes a reaction the local user has added.
+func reactionMineStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(themeAccent).Bold(true)
+}
+
 func replyBarStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(themeWarn).

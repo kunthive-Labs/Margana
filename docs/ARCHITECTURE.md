@@ -65,7 +65,7 @@ At runtime marga talks to two places: **Discord directly**, and **the relay**.
 
 The public relay
 ([`kunthive-Labs/marga-discord-relay`](https://github.com/kunthive-Labs/marga-discord-relay))
-persists this to SQLite. As currently implemented:
+persists this to SQLite. As currently implemented **on that public deployment**:
 
 - Message **content is stored in plaintext**, alongside author, timestamp, and
   channel/user/guild IDs. Nothing is encrypted or hashed.
@@ -74,10 +74,25 @@ persists this to SQLite. As currently implemented:
 - **There is no per-user deletion path.** A message row is only removed when the
   original message is deleted on Discord; there is no "delete my data" endpoint.
 
-This is an honest description of present behavior, not a target state. Adding a
-retention window and a deletion path to the relay are tracked follow-ups. If
-this is unacceptable for your threat model, self-host the relay or run marga
-send-only (see below).
+This is an honest description of the *public* deployment's present behavior, not
+a target state. If this is unacceptable for your threat model, self-host the
+relay or run marga send-only (see below).
+
+> **The self-host reference relay closes the last two gaps.** This repository
+> ships a reference relay in [`cmd/relay`](../cmd/relay) (see
+> [`RELAY.md`](RELAY.md)) that speaks the same contract and adds, **scoped to
+> that relay**:
+>
+> - a **retention window** (`RELAY_RETENTION`, a Go duration; `0` keeps forever,
+>   preserving today's default) that prunes old rows on a timer *and* filters
+>   them out on read, so a not-yet-pruned row past the window is never served;
+>   and
+> - a **delete-my-data path** — `POST /api/delete-my-data {user_id}` and
+>   `DELETE /api/users/{id}/messages`, each returning `{deleted: N}`.
+>
+> Content is still stored in plaintext SQLite there too. The public
+> `marga-discord-relay` deployment may still lack a retention window and a
+> deletion path until it adopts the same changes.
 
 ### Onboarding keeps secrets on the machine
 
@@ -165,8 +180,11 @@ adapters. The client↔relay contract is already protocol-neutral and stays so:
 - A backend (Discord bot, Slack socket-mode app) translates its native events
   into the neutral event types; **no client change is needed** to add one.
 
-The relay server lives in a separate repo (`kunthive-Labs/marga-discord-relay`);
-this contract is the spec a multi-backend relay implements.
+The production Discord relay lives in a separate repo
+(`kunthive-Labs/marga-discord-relay`); this contract is the spec a multi-backend
+relay implements. A **self-hostable reference implementation of the contract**
+ships in this repo at [`cmd/relay`](../cmd/relay) (a local echo backend plus a
+Discord-bridge stub) — see [`RELAY.md`](RELAY.md).
 
 ## Summary
 

@@ -16,6 +16,14 @@ type Attachment struct {
 	Size        int    `json:"size,omitempty"`
 }
 
+// Reaction is one aggregated emoji reaction on a message: the emoji itself, how
+// many users reacted with it, and whether the local user is one of them.
+type Reaction struct {
+	Emoji string `json:"emoji"`
+	Count int    `json:"count"`
+	Me    bool   `json:"me,omitempty"`
+}
+
 type Message struct {
 	Network        string       `json:"network,omitempty"`
 	EventType      string       `json:"type,omitempty"`
@@ -30,6 +38,12 @@ type Message struct {
 	ReplyToAuthor  string       `json:"reply_to_author,omitempty"`
 	Attachments    []Attachment `json:"attachments,omitempty"`
 	Editable       bool         `json:"editable,omitempty"`
+	// Reactions is the aggregated set of emoji reactions on this message.
+	Reactions []Reaction `json:"reactions,omitempty"`
+	// ThreadID, when set, is the id of the thread-root event this message
+	// belongs to (a lightweight thread indicator; Marga has no separate thread
+	// pane).
+	ThreadID string `json:"thread_id,omitempty"`
 }
 
 type Channel struct {
