@@ -15,9 +15,14 @@ marga is a **client**. At runtime it talks to three things:
 | Sending messages | Discord **webhook** | — | `server.webhook_url` |
 | Login / identity | Discord **OAuth2** app | app id `1503351063468572754` | `auth.discord.*` |
 
-> **Note:** The relay (the WebSocket + history server) is a separate component
-> and is **not** part of this repository. To fully self-host you need a relay
-> that speaks marga's protocol. If you only want to use your own Discord app
+> **Note:** This repository now ships a **self-hostable reference relay** in
+> [`cmd/relay`](../cmd/relay) that speaks marga's protocol and runs via
+> `docker compose up` — see [`RELAY.md`](RELAY.md) and [step 3](#3-point-marga-at-your-own-relay).
+> It uses a local **echo** backend (a working loopback chat with history), plus
+> a retention window and a delete-my-data endpoint. The production **Discord**
+> bridge — the gateway bot that talks to Discord — is a separate component
+> ([`kunthive-Labs/marga-discord-relay`](https://github.com/kunthive-Labs/marga-discord-relay))
+> and is not in this repository. If you only want to use your own Discord app
 > and webhook against the hosted relay, you can stop after steps 1–2.
 
 ## 1. Register your own Discord application
@@ -78,6 +83,21 @@ export MARGA_RELAY_URL=https://relay.example.com
 
 History fetching is disabled if `relay_url` is empty — marga still works as a
 send-only / live-only client in that case.
+
+### Run the bundled reference relay
+
+You don't need to write your own — this repo ships one in
+[`cmd/relay`](../cmd/relay):
+
+```bash
+API_KEY=$(openssl rand -hex 32) docker compose up --build
+```
+
+Then point marga at `ws://localhost:8443/ws` / `http://localhost:8443` with the
+same `API_KEY`. It ships a local echo backend (a working loopback chat with
+history), an optional **retention window** (`RELAY_RETENTION`), and a
+**delete-my-data** endpoint. Full configuration, the wire contract, and TLS
+notes live in [`RELAY.md`](RELAY.md).
 
 ## 4. Other override knobs
 
