@@ -36,26 +36,50 @@ network-neutral relay contract.
 
 ## Install
 
-Marga is built from source. (Pre-built packages / Homebrew tap / Scoop bucket
-are not published yet for this org.)
+### Homebrew (macOS · Linux)
 
 ```bash
-git clone https://github.com/kunthive-Labs/Margana.git
-cd Margana
-make build          # → bin/marga
-./bin/marga
+brew install kunthive-Labs/tap/marga
 ```
 
-Or install the binary directly with Go:
+### Scoop (Windows)
+
+```powershell
+scoop bucket add kunthive-Labs https://github.com/kunthive-Labs/scoop-bucket
+scoop install marga
+```
+
+### Linux packages
+
+Grab the `.deb`, `.rpm`, `.apk`, or Arch package for your architecture from the
+[latest release](https://github.com/kunthive-Labs/Margana/releases/latest):
+
+```bash
+sudo dpkg -i  marga_*_linux_amd64.deb   # Debian / Ubuntu
+sudo rpm  -i  marga_*_linux_amd64.rpm   # Fedora / RHEL
+```
+
+### Pre-built binary
+
+Download the archive for your OS/arch from the
+[Releases page](https://github.com/kunthive-Labs/Margana/releases/latest),
+verify it against `checksums.txt`, extract, and put `marga` on your `PATH`.
+
+### From source
 
 ```bash
 go install -tags goolm github.com/kunthive-Labs/Margana/cmd/marga@latest
 ```
 
-Requires [Go](https://go.dev) 1.25+. The `goolm` build tag selects mautrix's
-pure-Go Olm backend for Matrix end-to-end encryption, so no system `libolm`
-or C toolchain is needed (`make build` sets it for you). Without the tag the
-build falls back to CGo `libolm`.
+or clone and `make build` (→ `bin/marga`). Requires [Go](https://go.dev) 1.25+.
+The `goolm` build tag selects mautrix's pure-Go Olm backend for Matrix
+end-to-end encryption, so no system `libolm` or C toolchain is needed
+(`make build` sets it for you). Without the tag the build falls back to CGo
+`libolm`.
+
+> Packages are published by tagging a release — see
+> [docs/RELEASING.md](docs/RELEASING.md). If a one-liner above 404s, that
+> release hasn't been cut yet; build from source in the meantime.
 
 ## Quick start
 
@@ -86,9 +110,10 @@ connect. Pick **Matrix** for a zero-setup start.
 | `Ctrl+Y` | Toggle users panel |
 | `Ctrl+L` | Jump to bottom |
 | `Ctrl+P` / `Ctrl+N` | Previous / next channel |
+| `Alt+1`…`Alt+9` | Jump to the Nth channel |
 | `Ctrl+T` | Switch to the next network |
+| `Ctrl+K` | Command palette — jump to any channel / command / network |
 | `Ctrl+W` | Delete word backwards |
-| `Ctrl+K` | Delete to end of line |
 | `Ctrl+U` | Clear input |
 | `Tab` | Complete `@user` or `#channel` |
 | `↑` / `↓` | Scroll history |
