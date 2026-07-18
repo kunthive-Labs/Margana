@@ -39,6 +39,20 @@ type SendRawMsg struct {
 	Content string
 }
 
+// SetInputMsg replaces the input line's contents. Emitted by plugin effects
+// (marga.set_input) and handled on the Update loop, since it mutates the TUI's
+// input model.
+type SetInputMsg struct {
+	Value string
+}
+
+// NotifyMsg asks the TUI to show an OS desktop notification. Emitted by plugin
+// effects (marga.notify); the TUI turns it into a notification command.
+type NotifyMsg struct {
+	Title string
+	Body  string
+}
+
 type SendFileMsg struct {
 	Path    string
 	Content string
@@ -51,6 +65,12 @@ type EditMessageMsg struct {
 
 type StartEditMsg struct {
 	Target string
+}
+
+// ReactMsg asks the TUI to add an emoji reaction to the latest message in the
+// active channel. Emoji may be a unicode emoji or a :shortcode:.
+type ReactMsg struct {
+	Emoji string
 }
 
 type OpenImageMsg struct {
