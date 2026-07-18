@@ -522,6 +522,286 @@ func TestDefaultConfigPath(t *testing.T) {
 	}
 }
 
+func TestLoadPanelsConfig(t *testing.T) {
+	clearConfigEnvVars()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.toml")
+
+	content := `
+[general]
+username = "anon"
+
+[auth]
+enabled = false
+
+[[panels]]
+type = "github"
+source = "kunthive-Labs/Margana"
+refresh = "30s"
+
+[[panels]]
+type = "rss"
+title = "Blog"
+source = "https://example.com/feed.xml"
+
+[[panels]]
+type = "ci"
+source = "kunthive-Labs/Margana"
+enabled = false
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+
+	origArgs := os.Args
+	os.Args = []string{"marga", "--config", cfgPath}
+	defer func() { os.Args = origArgs }()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if len(cfg.Panels) != 3 {
+		t.Fatalf("expected 3 panels parsed, got %d", len(cfg.Panels))
+	}
+	if cfg.Panels[0].Type != "github" || cfg.Panels[0].Source != "kunthive-Labs/Margana" {
+		t.Errorf("unexpected panel[0]: %#v", cfg.Panels[0])
+	}
+	if cfg.Panels[0].Refresh != "30s" {
+		t.Errorf("expected explicit refresh 30s, got %q", cfg.Panels[0].Refresh)
+	}
+	if cfg.Panels[1].Title != "Blog" {
+		t.Errorf("expected title 'Blog', got %q", cfg.Panels[1].Title)
+	}
+	// The rss panel omitted refresh, so ApplyDefaults (via Load) fills it in.
+	if cfg.Panels[1].Refresh != "60s" {
+		t.Errorf("expected defaulted refresh 60s, got %q", cfg.Panels[1].Refresh)
+	}
+	if cfg.Panels[2].Enabled == nil {
+		t.Fatal("expected ci panel to record enabled=false")
+	} else if *cfg.Panels[2].Enabled {
+		t.Errorf("expected ci panel enabled=false")
+	}
+
+	// EnabledPanels drops the disabled ci panel and keeps the other two.
+	enabled := cfg.EnabledPanels()
+	if len(enabled) != 2 {
+		t.Fatalf("expected 2 enabled panels, got %d", len(enabled))
+	}
+	for _, p := range enabled {
+		if p.Type == "ci" {
+			t.Errorf("disabled ci panel should be excluded from EnabledPanels")
+		}
+	}
+}
+
+func TestPanelRefreshDefaulting(t *testing.T) {
+	cfg := &Config{Panels: []PanelConfig{
+		{Type: "github", Source: "o/r"},
+		{Type: "rss", Source: "https://x/feed", Refresh: "5m"},
+	}}
+	cfg.ApplyDefaults()
+	if cfg.Panels[0].Refresh != "60s" {
+		t.Errorf("expected default refresh 60s, got %q", cfg.Panels[0].Refresh)
+	}
+	if cfg.Panels[1].Refresh != "5m" {
+		t.Errorf("expected explicit refresh preserved, got %q", cfg.Panels[1].Refresh)
+	}
+}
+
+func TestEnabledPanelsDefaultsAndSynthesis(t *testing.T) {
+	tru, fls := true, false
+
+	// enabled omitted → included; explicit true → included; explicit false → excluded.
+	cfg := &Config{Panels: []PanelConfig{
+		{Type: "rss", Source: "a", Refresh: "60s"},
+		{Type: "rss", Source: "b", Refresh: "60s", Enabled: &tru},
+		{Type: "rss", Source: "c", Refresh: "60s", Enabled: &fls},
+	}}
+	if got := cfg.EnabledPanels(); len(got) != 2 {
+		t.Fatalf("expected 2 enabled panels (nil + true), got %d: %#v", len(got), got)
+	}
+
+	// Legacy [github] block synthesizes a github panel when none is explicit.
+	cfg2 := &Config{Github: GithubConfig{Repo: "o/r", Token: "t"}}
+	got2 := cfg2.EnabledPanels()
+	if len(got2) != 1 {
+		t.Fatalf("expected 1 synthesized github panel, got %d", len(got2))
+	}
+	if got2[0].Type != "github" || got2[0].Source != "o/r" || got2[0].Token != "t" {
+		t.Errorf("unexpected synthesized panel: %#v", got2[0])
+	}
+	if got2[0].Refresh != "60s" {
+		t.Errorf("expected synthesized refresh 60s, got %q", got2[0].Refresh)
+	}
+
+	// No synthesis when an explicit github panel already exists.
+	cfg3 := &Config{
+		Github: GithubConfig{Repo: "o/r"},
+		Panels: []PanelConfig{{Type: "github", Source: "other/repo", Refresh: "60s"}},
+	}
+	got3 := cfg3.EnabledPanels()
+	if len(got3) != 1 {
+		t.Fatalf("expected no duplicate github synthesis, got %d panels", len(got3))
+	}
+	if got3[0].Source != "other/repo" {
+		t.Errorf("expected explicit github panel to win, got %q", got3[0].Source)
+	}
+
+	// Nothing configured → no panels.
+	if got4 := (&Config{}).EnabledPanels(); len(got4) != 0 {
+		t.Fatalf("expected no panels, got %d", len(got4))
+	}
+}
+
+func TestValidatePanels(t *testing.T) {
+	base := func() *Config {
+		c := Default()
+		c.Server.WebsocketURL = "wss://x"
+		c.Server.WebhookURL = "https://discord.com/api/webhooks/x"
+		c.Auth.Discord.ClientID = "id"
+		return c
+	}
+
+	c := base()
+	c.Panels = []PanelConfig{{Type: "", Source: "x"}}
+	if err := c.Validate(); err == nil {
+		t.Error("expected error for panel missing type")
+	}
+
+	c = base()
+	c.Panels = []PanelConfig{{Type: "rss", Source: ""}}
+	if err := c.Validate(); err == nil {
+		t.Error("expected error for panel missing source")
+	}
+
+	c = base()
+	c.Panels = []PanelConfig{{Type: "rss", Source: "https://x/feed"}}
+	if err := c.Validate(); err != nil {
+		t.Errorf("expected valid panels config, got %v", err)
+	}
+}
+
+func TestLoadPluginsConfig(t *testing.T) {
+	clearConfigEnvVars()
+	os.Unsetenv("MARGA_PLUGINS_ENABLED")
+	os.Unsetenv("MARGA_PLUGINS_DIR")
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.toml")
+	content := `
+[general]
+username = "testuser"
+
+[server]
+websocket_url = "wss://relay.test.com/ws"
+webhook_url = "https://discord.com/api/webhooks/123/token"
+
+[auth.discord]
+client_id = "test-client-id"
+
+[plugins]
+enabled = true
+dir = "/custom/plugins"
+
+[[plugins.entries]]
+path = "roll.lua"
+enabled = true
+
+[[plugins.entries]]
+path = "off.lua"
+enabled = false
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("writing test config: %v", err)
+	}
+
+	origArgs := os.Args
+	os.Args = []string{"marga", "--config", cfgPath}
+	defer func() { os.Args = origArgs }()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if !cfg.Plugins.Enabled {
+		t.Error("expected plugins.enabled to be true")
+	}
+	if cfg.Plugins.Dir != "/custom/plugins" {
+		t.Errorf("expected plugins.dir '/custom/plugins', got %q", cfg.Plugins.Dir)
+	}
+	if len(cfg.Plugins.Entries) != 2 {
+		t.Fatalf("expected 2 plugin entries, got %d", len(cfg.Plugins.Entries))
+	}
+	if cfg.Plugins.Entries[0].Path != "roll.lua" || !cfg.Plugins.Entries[0].Enabled {
+		t.Errorf("unexpected first entry: %+v", cfg.Plugins.Entries[0])
+	}
+	if cfg.Plugins.Entries[1].Path != "off.lua" || cfg.Plugins.Entries[1].Enabled {
+		t.Errorf("unexpected second entry: %+v", cfg.Plugins.Entries[1])
+	}
+}
+
+func TestPluginsDefaultDir(t *testing.T) {
+	clearConfigEnvVars()
+	os.Unsetenv("MARGA_PLUGINS_ENABLED")
+	os.Unsetenv("MARGA_PLUGINS_DIR")
+
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.toml")
+	content := `
+[general]
+username = "testuser"
+
+[server]
+websocket_url = "wss://relay.test.com/ws"
+webhook_url = "https://discord.com/api/webhooks/123/token"
+
+[auth.discord]
+client_id = "test-client-id"
+
+[plugins]
+enabled = true
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("writing test config: %v", err)
+	}
+
+	origArgs := os.Args
+	os.Args = []string{"marga", "--config", cfgPath}
+	defer func() { os.Args = origArgs }()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	want := filepath.Join(configHome, "marga", "plugins")
+	if cfg.Plugins.Dir != want {
+		t.Errorf("expected default plugin dir %q, got %q", want, cfg.Plugins.Dir)
+	}
+}
+
+func TestPluginsEnvOverrides(t *testing.T) {
+	cfg := Default()
+	t.Setenv("MARGA_PLUGINS_ENABLED", "true")
+	t.Setenv("MARGA_PLUGINS_DIR", "/env/plugins")
+
+	applyEnvOverrides(cfg)
+
+	if !cfg.Plugins.Enabled {
+		t.Error("expected plugins.enabled=true from MARGA_PLUGINS_ENABLED")
+	}
+	if cfg.Plugins.Dir != "/env/plugins" {
+		t.Errorf("expected plugins.dir '/env/plugins' from env, got %q", cfg.Plugins.Dir)
+	}
+}
+
 func clearConfigEnvVars() {
 	os.Unsetenv("MARGA_USERNAME")
 	os.Unsetenv("MARGA_CHANNEL")

@@ -135,12 +135,53 @@ username_colors    = ["#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead"]
 
 ### `[github]`
 
-Optional GitHub activity sidebar, refreshed every 60s when `repo` is set.
+Optional GitHub activity sidebar, refreshed every 60s when `repo` is set. This
+block is **shorthand** for a single `[[panels]]` entry of type `github` (see
+below) and is kept for backward compatibility. It is ignored when an explicit
+github panel is declared in `[[panels]]`.
 
 | Key | Type | Description |
 |-----|------|-------------|
 | `repo` | string | `owner/repo` to track (e.g. `kunthive-Labs/Margana`). Empty disables the panel. |
 | `token` | string | GitHub PAT. Optional for public repos (raises rate limit), required for private repos. |
+
+### `[[panels]]`
+
+Configurable ambient sidebar panels. Declare any number; they render in the
+right-hand sidebar (a few at a time, sharing the available height), each
+refreshing on its own interval. An immediate fetch runs at startup so panels
+populate without waiting for the first tick.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `type` | string | — | Panel kind: `github` (recent repo events), `ci` (GitHub Actions runs), or `rss` (an RSS 2.0 feed). Required. |
+| `source` | string | — | `owner/repo` for `github`/`ci`, or the feed URL for `rss`. Required. |
+| `title` | string | per type | Panel heading. Defaults to e.g. `GitHub: owner/repo`, `CI: owner/repo`, or `RSS`. |
+| `refresh` | string | `60s` | Refresh interval as a Go duration (`30s`, `5m`, ...). |
+| `token` | string | — | GitHub PAT for `github`/`ci` panels (raises the rate limit; required for private repos). Unused by `rss`. |
+| `enabled` | bool | `true` | Set `false` to keep an entry but disable it. |
+
+```toml
+[[panels]]
+type    = "github"
+source  = "kunthive-Labs/Margana"
+refresh = "60s"
+
+[[panels]]
+type    = "ci"
+source  = "kunthive-Labs/Margana"
+refresh = "120s"
+
+[[panels]]
+type    = "rss"
+source  = "https://hnrss.org/frontpage"
+title   = "Hacker News"
+refresh = "5m"
+```
+
+The `MARGA_GITHUB_REPO` / `MARGA_GITHUB_TOKEN` environment variables still feed
+the legacy `[github]` shorthand, which is synthesized into a github panel when
+no explicit one is configured.
 
 ### `[notifications]`
 

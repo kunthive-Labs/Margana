@@ -22,6 +22,20 @@ type GithubConfig struct {
 	Repo  string `toml:"repo"`
 }
 
+// PanelConfig describes one ambient sidebar panel. The legacy [github] block is
+// shorthand for a single github panel (see EnabledPanels); additional panels
+// are configured as [[panels]] entries. Type and Source are required. Enabled
+// is a pointer so an omitted value defaults to true, while an explicit
+// `enabled = false` disables the panel.
+type PanelConfig struct {
+	Type    string `toml:"type"`
+	Title   string `toml:"title"`
+	Source  string `toml:"source"`
+	Refresh string `toml:"refresh"`
+	Token   string `toml:"token"`
+	Enabled *bool  `toml:"enabled"`
+}
+
 type Config struct {
 	General          GeneralConfig          `toml:"general"`
 	Server           ServerConfig           `toml:"server"`
@@ -32,7 +46,30 @@ type Config struct {
 	Logging          LoggingConfig          `toml:"logging"`
 	ConfiguredGuilds []GuildEntry           `toml:"configured_guilds"`
 	Networks         []NetworkConfig        `toml:"networks"`
+	Panels           []PanelConfig          `toml:"panels"`
 	Themes           map[string]ThemeColors `toml:"themes"`
+	Plugins          PluginsConfig          `toml:"plugins"`
+}
+
+// PluginsConfig controls Marga's Lua scripting surface. Individual scripts are
+// listed as [[plugins.entries]]. (A single [plugins] table cannot also be a
+// [[plugins]] array in TOML, so the per-script entries are nested here.)
+type PluginsConfig struct {
+	// Enabled turns the plugin system on. Off by default. Env:
+	// MARGA_PLUGINS_ENABLED.
+	Enabled bool `toml:"enabled"`
+	// Dir is the base directory for relative plugin paths. Defaults to
+	// <configDir>/plugins. Env: MARGA_PLUGINS_DIR.
+	Dir string `toml:"dir"`
+	// Entries lists the plugin scripts to load, in order.
+	Entries []PluginEntry `toml:"entries"`
+}
+
+// PluginEntry is one plugin script. Path is absolute or relative to
+// PluginsConfig.Dir.
+type PluginEntry struct {
+	Path    string `toml:"path"`
+	Enabled bool   `toml:"enabled"`
 }
 
 // NetworkConfig describes one chat network connection. Discord is implicit via
@@ -46,6 +83,13 @@ type NetworkConfig struct {
 	// Matrix-specific (non-secret).
 	Homeserver string `toml:"homeserver,omitempty"`
 	UserID     string `toml:"user_id,omitempty"`
+	// IRC-specific (non-secret). The SASL password lives in the OS keyring
+	// (service "marga-<id>", key "sasl_password") or MARGA_IRC_PASSWORD.
+	Server   string `toml:"server,omitempty"`
+	Port     int    `toml:"port,omitempty"`
+	TLS      bool   `toml:"tls,omitempty"`
+	Nick     string `toml:"nick,omitempty"`
+	SASLUser string `toml:"sasl_user,omitempty"`
 }
 
 // EnabledNetworks returns the configured networks, synthesizing the implicit
@@ -65,6 +109,42 @@ func (c *Config) EnabledNetworks() []NetworkConfig {
 	}
 	if !hasDiscord && c.UsesDiscordAuth() {
 		out = append([]NetworkConfig{{ID: "discord", Type: "discord", Enabled: true}}, out...)
+	}
+	return out
+}
+
+// defaultPanelRefresh is applied to panels that omit an explicit refresh.
+const defaultPanelRefresh = "60s"
+
+// EnabledPanels returns the ambient sidebar panels to display, synthesizing an
+// implicit github panel from the legacy [github] block when Github.Repo is set
+// and no explicit github panel exists. This mirrors EnabledNetworks' implicit
+// Discord synthesis and keeps existing [github]-only configs (and the
+// MARGA_GITHUB_* env overrides that feed them) working untouched. Panels with
+// `enabled = false` are omitted; an omitted `enabled` defaults to true. Each
+// returned panel has a non-empty refresh.
+func (c *Config) EnabledPanels() []PanelConfig {
+	var out []PanelConfig
+	hasGithub := false
+	for _, p := range c.Panels {
+		if p.Enabled != nil && !*p.Enabled {
+			continue
+		}
+		if p.Type == "github" {
+			hasGithub = true
+		}
+		if p.Refresh == "" {
+			p.Refresh = defaultPanelRefresh
+		}
+		out = append(out, p)
+	}
+	if !hasGithub && c.Github.Repo != "" {
+		out = append([]PanelConfig{{
+			Type:    "github",
+			Source:  c.Github.Repo,
+			Token:   c.Github.Token,
+			Refresh: defaultPanelRefresh,
+		}}, out...)
 	}
 	return out
 }
@@ -218,6 +298,11 @@ func (c *Config) ApplyDefaults() {
 	if c.Logging.Format == "" {
 		c.Logging.Format = "text"
 	}
+	for i := range c.Panels {
+		if c.Panels[i].Refresh == "" {
+			c.Panels[i].Refresh = defaultPanelRefresh
+		}
+	}
 }
 
 func configDir() (string, error) {
@@ -244,6 +329,16 @@ func DefaultConfigPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "config.toml"), nil
+}
+
+// DefaultPluginDir returns the default plugin directory, <configDir>/plugins.
+// Used when [plugins].dir is unset.
+func DefaultPluginDir() (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "plugins"), nil
 }
 
 func dataDir() (string, error) {
@@ -383,6 +478,15 @@ func Load() (*Config, error) {
 	cfg.ApplyDefaults()
 	applyEnvOverrides(cfg)
 
+	// Resolve the default plugin directory when unset. Done after env overrides
+	// so MARGA_PLUGINS_DIR wins; best-effort, so a missing home dir just leaves
+	// it empty rather than failing the whole load.
+	if cfg.Plugins.Dir == "" {
+		if dir, err := DefaultPluginDir(); err == nil {
+			cfg.Plugins.Dir = dir
+		}
+	}
+
 	// Load Discord tokens from the keyring, migrating any legacy un-namespaced
 	// entries into the "marga-discord" namespace first.
 	_ = credstore.MigrateLegacyDiscord()
@@ -511,6 +615,14 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("MARGA_LOG_FORMAT"); v != "" {
 		cfg.Logging.Format = v
 	}
+	if v := os.Getenv("MARGA_PLUGINS_ENABLED"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.Plugins.Enabled = b
+		}
+	}
+	if v := os.Getenv("MARGA_PLUGINS_DIR"); v != "" {
+		cfg.Plugins.Dir = v
+	}
 }
 
 func (c *Config) Validate() error {
@@ -542,6 +654,17 @@ func (c *Config) Validate() error {
 		}
 		if n.Type == "" {
 			return fmt.Errorf("network %q needs a type", n.ID)
+		}
+		if n.Type == "irc" && n.Server == "" {
+			return fmt.Errorf("irc network %q needs a server", n.ID)
+		}
+	}
+	for i, p := range c.Panels {
+		if p.Type == "" {
+			return fmt.Errorf("[[panels]] entry %d needs a type", i+1)
+		}
+		if p.Source == "" {
+			return fmt.Errorf("panel %q needs a source", p.Type)
 		}
 	}
 	return nil
