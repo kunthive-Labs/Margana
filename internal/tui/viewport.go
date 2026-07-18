@@ -155,6 +155,11 @@ func (v *ViewportModel) View() string {
 				msgLines = append(msgLines, replyLine)
 			}
 
+			// Thread indicator: this message belongs to a thread.
+			if line := threadIndicatorLine(m); line != "" {
+				msgLines = append(msgLines, line)
+			}
+
 			ts := tsStyle.Render(formatTime(m.Timestamp))
 			username := coloredUsername(m.Username)
 			content := renderMarkdown(m.Content, v.myUsername, v.width-12)
@@ -167,6 +172,11 @@ func (v *ViewportModel) View() string {
 				if att.Filename != "" {
 					msgLines = append(msgLines, RenderAttachment(att))
 				}
+			}
+
+			// Reactions summary below the message.
+			if hasReactions(m) {
+				msgLines = append(msgLines, reactionsLine(m))
 			}
 		}
 
@@ -203,13 +213,71 @@ func messageLineCount(m model.Message, width int, myUsername string) int {
 	if m.ReplyToID != "" {
 		count++
 	}
+	if m.ThreadID != "" {
+		count++ // thread indicator line
+	}
 	ts := formatTime(m.Timestamp)
 	content := renderMarkdown(m.Content, myUsername, width-12)
 	raw := fmt.Sprintf("%s <%s> %s", ts, m.Username, content)
 	wrapped := wrapText(raw, width)
 	count += len(strings.Split(wrapped, "\n"))
 	count += len(m.Attachments)
+	if hasReactions(m) {
+		count++ // single-line reactions summary
+	}
 	return count
+}
+
+// hasReactions reports whether m has at least one reaction with a positive
+// count (so an emptied-out reaction slice renders/counts as none).
+func hasReactions(m model.Message) bool {
+	for _, r := range m.Reactions {
+		if r.Count > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveEmoji turns a bare or :colon-wrapped: shortcode into its unicode emoji
+// via emojiMap; anything already an emoji (or unknown) passes through unchanged.
+func resolveEmoji(s string) string {
+	name := strings.Trim(s, ":")
+	if e, ok := emojiMap[name]; ok {
+		return e
+	}
+	return s
+}
+
+// reactionsLine renders a message's aggregated reactions as a single indented
+// line, e.g. "👍 3  🎉 1", with the local user's own reactions emphasized.
+func reactionsLine(m model.Message) string {
+	parts := make([]string, 0, len(m.Reactions))
+	for _, r := range m.Reactions {
+		if r.Count <= 0 {
+			continue
+		}
+		seg := fmt.Sprintf("%s %d", resolveEmoji(r.Emoji), r.Count)
+		if r.Me {
+			seg = reactionMineStyle().Render(seg)
+		} else {
+			seg = reactionStyle().Render(seg)
+		}
+		parts = append(parts, seg)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return reactionRowStyle().Render(strings.Join(parts, "  "))
+}
+
+// threadIndicatorLine renders a lightweight "belongs to a thread" marker, reusing
+// the reply-preview styling. Empty when the message is not part of a thread.
+func threadIndicatorLine(m model.Message) string {
+	if m.ThreadID == "" {
+		return ""
+	}
+	return replyPreviewStyle().Render("⤷ thread")
 }
 
 func wrapText(text string, width int) string {

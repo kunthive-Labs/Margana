@@ -256,6 +256,90 @@ func (m *Model) applyMessageUpdate(updated model.Message) *model.Message {
 	return nil
 }
 
+// applyReaction folds one reaction delta into the target message's aggregated
+// Reactions and returns the updated message (for persistence), or nil if the
+// target is not currently loaded. add=false removes one occurrence; me marks
+// whether the delta is the local user's own reaction.
+func (m *Model) applyReaction(targetID, emoji string, add, me bool) *model.Message {
+	if targetID == "" || emoji == "" {
+		return nil
+	}
+	for i := range m.msgs {
+		if m.msgs[i].ID != targetID {
+			continue
+		}
+		m.msgs[i].Reactions = updateReactions(m.msgs[i].Reactions, emoji, add, me)
+		applied := m.msgs[i]
+		return &applied
+	}
+	return nil
+}
+
+// updateReactions applies a single add/remove of emoji to an aggregated set. It
+// keeps counts non-negative, drops an emoji whose count reaches zero, and only
+// ever upgrades/clears the Me flag on the local user's own add/remove.
+func updateReactions(reactions []model.Reaction, emoji string, add, me bool) []model.Reaction {
+	idx := -1
+	for i := range reactions {
+		if reactions[i].Emoji == emoji {
+			idx = i
+			break
+		}
+	}
+	if add {
+		if idx < 0 {
+			return append(reactions, model.Reaction{Emoji: emoji, Count: 1, Me: me})
+		}
+		reactions[idx].Count++
+		if me {
+			reactions[idx].Me = true
+		}
+		return reactions
+	}
+	if idx < 0 {
+		return reactions
+	}
+	reactions[idx].Count--
+	if me {
+		reactions[idx].Me = false
+	}
+	if reactions[idx].Count <= 0 {
+		return append(reactions[:idx], reactions[idx+1:]...)
+	}
+	return reactions
+}
+
+// handleReact adds an emoji reaction to the most recent real message in the
+// active channel, gated on the active adapter advertising the capability.
+func (m Model) handleReact(emoji string) (tea.Model, tea.Cmd) {
+	a := m.activeAdapter()
+	if a == nil || !a.Capabilities().Reactions {
+		m.msgs = append(m.msgs, commands.SystemMsg("reactions are not supported on this network"))
+		m.scrollOffset = 0
+		return m, nil
+	}
+	idx := -1
+	for i := len(m.msgs) - 1; i >= 0; i-- {
+		if m.msgs[i].Username == "system" || isLocalEchoID(m.msgs[i].ID) {
+			continue
+		}
+		idx = i
+		break
+	}
+	if idx < 0 {
+		m.msgs = append(m.msgs, commands.SystemMsg("no message to react to in this channel"))
+		m.scrollOffset = 0
+		return m, nil
+	}
+	resolved := resolveEmoji(emoji)
+	targetID := m.msgs[idx].ID
+	ref := m.ref(m.channel)
+	return m, func() tea.Msg {
+		err := a.React(ref, targetID, resolved)
+		return reactResultMsg{Err: err}
+	}
+}
+
 func (m Model) findMessageIndex(id string) int {
 	for i := range m.msgs {
 		if m.msgs[i].ID == id {
