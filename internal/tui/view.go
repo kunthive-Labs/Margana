@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kunthive-Labs/Margana/internal/network"
+	"github.com/kunthive-Labs/Margana/internal/tui/panels"
 )
 
 func fitToSize(content string, width, height int) string {
@@ -103,6 +104,42 @@ func (m Model) View() string {
 			modalH = m.height - 4
 		}
 		return centerInTerm(m.renderCoachModal(modalW, modalH), modalW, modalH, m.width, m.height)
+	}
+
+	if m.palette.visible {
+		modalW := m.width * 60 / 100
+		if modalW < 44 {
+			modalW = 44
+		}
+		if modalW > m.width-6 {
+			modalW = m.width - 6
+		}
+		modalH := m.height * 60 / 100
+		if modalH < 12 {
+			modalH = 12
+		}
+		if modalH > m.height-4 {
+			modalH = m.height - 4
+		}
+		return centerInTerm(m.renderPalette(modalW, modalH), modalW, modalH, m.width, m.height)
+	}
+
+	if m.verifyVisible {
+		modalW := m.width * 60 / 100
+		if modalW < 48 {
+			modalW = 48
+		}
+		if modalW > m.width-6 {
+			modalW = m.width - 6
+		}
+		modalH := m.height * 60 / 100
+		if modalH < 14 {
+			modalH = 14
+		}
+		if modalH > m.height-4 {
+			modalH = m.height - 4
+		}
+		return centerInTerm(m.renderVerifyModal(modalW, modalH), modalW, modalH, m.width, m.height)
 	}
 
 	statusBar := fitToSize(m.renderStatusBar(), m.width, 1)
@@ -232,6 +269,9 @@ func (m Model) renderStatusBar() string {
 	}
 
 	leftStr := left + unreadPart
+	if s := m.unreadSummary(); s != "" {
+		leftStr += "  " + s
+	}
 	leftW := lipgloss.Width(leftStr)
 	rightW := lipgloss.Width(right)
 	gap := m.width - 2 - leftW - rightW
@@ -305,7 +345,11 @@ func (m Model) renderChannels(width, height int) string {
 		if active {
 			prefix = "* "
 		}
-		items = append(items, channelStyle(active).Render(prefix+"#"+ch))
+		item := channelStyle(active).Render(prefix + "#" + ch)
+		if badge := m.channelBadge(ch); badge != "" {
+			item += " " + badge
+		}
+		items = append(items, item)
 	}
 
 	content := strings.Join(items, "\n")
@@ -347,14 +391,30 @@ func (m Model) renderUsers(width, height int) string {
 	return fitToSize(title+"\n"+box, width, height)
 }
 
+// maxVisiblePanels caps how many ambient panels the right sidebar shows at
+// once, so the user list and notifications always keep room.
+const maxVisiblePanels = 3
+
 func (m Model) renderRightSidebar(width, height int) string {
 	if width < 10 {
 		return ""
 	}
 
-	githubHeight := 0
-	if m.githubRepo != "" && len(m.githubEvents) > 0 {
-		githubHeight = clampInt(len(m.githubEvents)+3, 5, height/4)
+	// Collect the panels that currently have something to show, capped.
+	type activePanel struct {
+		title  string
+		result panels.Result
+	}
+	var active []activePanel
+	for _, p := range m.panels {
+		res, ok := m.panelData[p.ID]
+		if !ok || len(res.Items) == 0 {
+			continue
+		}
+		active = append(active, activePanel{title: p.Title, result: res})
+		if len(active) >= maxVisiblePanels {
+			break
+		}
 	}
 
 	usersHeight := 0
@@ -365,55 +425,88 @@ func (m Model) renderRightSidebar(width, height int) string {
 		}
 	}
 
-	notificationsHeight := height - usersHeight - githubHeight
-	if notificationsHeight < 8 {
-		notificationsHeight = 8
+	// Reserve a minimum for notifications, then divide the remaining height
+	// among the active panels, each capped at a quarter of the sidebar.
+	const notificationsMin = 8
+	budget := height - usersHeight - notificationsMin
+	if budget < 0 {
+		budget = 0
+	}
+	panelHeights := make([]int, 0, len(active))
+	panelsHeight := 0
+	for _, a := range active {
+		if panelsHeight >= budget {
+			break
+		}
+		h := clampInt(len(a.result.Items)*2+3, 5, height/4)
+		if panelsHeight+h > budget {
+			h = budget - panelsHeight
+		}
+		if h < 3 {
+			break
+		}
+		panelHeights = append(panelHeights, h)
+		panelsHeight += h
+	}
+
+	notificationsHeight := height - usersHeight - panelsHeight
+	if notificationsHeight < notificationsMin {
+		notificationsHeight = notificationsMin
 		if usersHeight > 0 {
-			usersHeight = height - notificationsHeight - githubHeight
+			usersHeight = height - notificationsHeight - panelsHeight
 			if usersHeight < 0 {
 				usersHeight = 0
 			}
 		}
 	}
 
-	var panels []string
+	var sections []string
 	if usersHeight > 0 {
-		panels = append(panels, m.renderUsers(width, usersHeight))
+		sections = append(sections, m.renderUsers(width, usersHeight))
 	}
-	if githubHeight > 0 {
-		panels = append(panels, m.renderGithubActivity(width, githubHeight))
+	for i, h := range panelHeights {
+		sections = append(sections, renderPanel(active[i].title, active[i].result, width, h))
 	}
-	notificationsPanel := m.renderNotifications(width, notificationsHeight)
-	panels = append(panels, notificationsPanel)
+	sections = append(sections, m.renderNotifications(width, notificationsHeight))
 
-	if len(panels) == 1 {
-		return panels[0]
+	if len(sections) == 1 {
+		return sections[0]
 	}
-	return fitToSize(lipgloss.JoinVertical(lipgloss.Left, panels...), width, height)
+	return fitToSize(lipgloss.JoinVertical(lipgloss.Left, sections...), width, height)
 }
 
-func (m Model) renderGithubActivity(width, height int) string {
-	if width < 10 || len(m.githubEvents) == 0 {
+// renderPanel draws one ambient panel: a title bar plus a two-line-per-item
+// list — the Primary headline in accent, the timestamp + Secondary metadata in
+// dim. It is the generic successor to the old GitHub-only renderGithubActivity.
+func renderPanel(title string, data panels.Result, width, height int) string {
+	if width < 10 {
 		return ""
 	}
-	title := panelTitleStyle().Render(fmt.Sprintf(" GitHub: %s ", m.githubRepo))
+	titleBar := panelTitleStyle().Render(fmt.Sprintf(" %s ", title))
+	maxW := width - 4
+	if maxW < 8 {
+		maxW = 8
+	}
 	var items []string
-	for _, ev := range m.githubEvents {
-		ts := ev.Timestamp.Local().Format("01-02 15:04")
-		evType := strings.TrimSuffix(ev.Type, "Event")
-		line := fmt.Sprintf("%s %s @%s", ts, evType, ev.Actor)
-		items = append(items, lipgloss.NewStyle().Foreground(themeDim).PaddingLeft(1).Render(line))
-		if ev.Title != "" {
-			preview := ev.Title
-			maxW := width - 4
-			if maxW < 8 {
-				maxW = 8
-			}
-			if len([]rune(preview)) > maxW {
-				preview = string([]rune(preview)[:maxW]) + "…"
-			}
-			items = append(items, lipgloss.NewStyle().Foreground(themeAccent).PaddingLeft(2).Render(preview))
+	for _, it := range data.Items {
+		if it.Primary != "" {
+			items = append(items, lipgloss.NewStyle().Foreground(themeAccent).PaddingLeft(1).Render(clampRunes(it.Primary, maxW)))
 		}
+		meta := it.Secondary
+		if !it.Timestamp.IsZero() {
+			ts := it.Timestamp.Local().Format("01-02 15:04")
+			if meta != "" {
+				meta = ts + " " + meta
+			} else {
+				meta = ts
+			}
+		}
+		if meta != "" {
+			items = append(items, lipgloss.NewStyle().Foreground(themeDim).PaddingLeft(2).Render(clampRunes(meta, maxW)))
+		}
+	}
+	if len(items) == 0 {
+		items = append(items, lipgloss.NewStyle().Foreground(themeDim).Italic(true).PaddingLeft(2).Render("no activity yet"))
 	}
 	content := strings.Join(items, "\n")
 	boxHeight := height - 1
@@ -422,7 +515,19 @@ func (m Model) renderGithubActivity(width, height int) string {
 	}
 	content = clipLines(content, borderedContentHeight(boxHeight))
 	box := renderBorderedBox(panelStyle(), width, boxHeight, content)
-	return fitToSize(title+"\n"+box, width, height)
+	return fitToSize(titleBar+"\n"+box, width, height)
+}
+
+// clampRunes truncates s to at most max runes, appending an ellipsis when cut.
+func clampRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	if max < 1 {
+		return ""
+	}
+	return string(r[:max-1]) + "…"
 }
 
 func (m Model) renderNotifications(width, height int) string {
@@ -559,11 +664,13 @@ func (m Model) renderHelpModal(width, height int) string {
 	var sections []string
 
 	sections = append(sections, m.helpSection("Navigation", innerW, [][2]string{
+		{"ctrl + k", "Command palette — jump to channel / command / network"},
 		{"↑ / ↓ / PgUp / PgDn", "Scroll messages"},
 		{"ctrl + l", "Jump to latest message"},
 		{"ctrl + b", "Toggle channels sidebar"},
 		{"ctrl + y", "Toggle users sidebar"},
 		{"ctrl + p / ctrl + n", "Previous / next channel"},
+		{"alt + 1..9", "Jump to the Nth channel"},
 	}))
 
 	sections = append(sections, m.helpSection("Messages", innerW, [][2]string{

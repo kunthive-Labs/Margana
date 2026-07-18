@@ -52,10 +52,37 @@ func (m Model) onMessageEvent(msg model.Message, fromActive bool) (Model, []tea.
 		return m, []tea.Cmd{m.persistMessageUpdate(updated)}
 	}
 
+	// Reaction deltas ride the message-event path: fold the emoji into the target
+	// message's aggregated reactions. Reactions are a live-view feature — a delta
+	// whose target is not currently loaded (other channel/network) is dropped.
+	if msg.EventType == "reaction_add" || msg.EventType == "reaction_remove" {
+		if !fromActive || msg.Channel != m.channel {
+			return m, nil
+		}
+		add := msg.EventType == "reaction_add"
+		me := m.isSelfMessage(msg)
+		if applied := m.applyReaction(msg.ID, msg.Content, add, me); applied != nil {
+			return m, []tea.Cmd{m.persistMessageUpdate(*applied)}
+		}
+		return m, nil
+	}
+
 	// Check for @mention — only notify if not from self and the channel
 	// isn't muted.
+	isMention := !m.isSelfMessage(msg) && containsMentionExact(msg.Content, m.username) && !m.isChannelMuted(msg.Channel)
+
+	// Track per-channel unread + mention badges across every network (D4). The
+	// channel currently on screen never accrues unread.
+	if !m.isSelfMessage(msg) && !(msg.Network == string(m.active) && msg.Channel == m.channel) {
+		key := unreadKey(msg.Network, msg.Channel)
+		m.unread[key]++
+		if isMention {
+			m.mentions[key]++
+		}
+	}
+
 	var notifCmd tea.Cmd
-	if !m.isSelfMessage(msg) && containsMentionExact(msg.Content, m.username) && !m.isChannelMuted(msg.Channel) {
+	if isMention {
 		n := model.Notification{
 			Channel:   msg.Channel,
 			Username:  msg.Username,
