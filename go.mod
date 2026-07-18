@@ -9,7 +9,9 @@ require (
 	github.com/gen2brain/beeep v0.11.2
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
+	github.com/lrstanley/girc v1.1.1
 	github.com/rs/zerolog v1.35.1
+	github.com/yuin/gopher-lua v1.1.2
 	github.com/zalando/go-keyring v0.2.8
 	go.mau.fi/util v0.9.9
 	golang.org/x/term v0.43.0
