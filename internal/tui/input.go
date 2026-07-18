@@ -440,13 +440,6 @@ func handleInputKey(msg tea.KeyMsg, m *InputModel) (bool, string) {
 		m.MoveHome()
 	case "ctrl+e":
 		m.MoveEnd()
-	case "ctrl+k":
-		// Delete to end of current line
-		end := m.pos
-		for end < len(m.text) && m.text[end] != '\n' {
-			end++
-		}
-		m.text = append(m.text[:m.pos], m.text[end:]...)
 	case "ctrl+u":
 		m.Clear()
 	case "ctrl+v":
